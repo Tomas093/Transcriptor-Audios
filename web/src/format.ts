@@ -2,7 +2,6 @@ import type { Session } from "./types";
 
 const timeFmt = new Intl.DateTimeFormat("es", { hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("es", { day: "numeric", month: "short" });
-const longFmt = new Intl.DateTimeFormat("es", { weekday: "long", day: "numeric", month: "long" });
 
 export const fmtTime = (iso: string) => timeFmt.format(new Date(iso));
 
@@ -32,14 +31,33 @@ export function groupLabel(iso: string, now = new Date()): string {
   return "Anteriores";
 }
 
-/** Días completos que quedan antes del borrado automático (0 = hoy). */
-export function daysLeft(updatedAt: string, retentionDays: number, now = Date.now()): number {
-  const expires = new Date(updatedAt).getTime() + retentionDays * 86_400_000;
-  return Math.max(0, Math.ceil((expires - now) / 86_400_000));
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+/** Milisegundos que faltan para el borrado automático (0 si ya toca). */
+export function msLeft(updatedAt: string, retentionDays: number, now = Date.now()): number {
+  return Math.max(0, new Date(updatedAt).getTime() + retentionDays * DAY - now);
 }
 
+/**
+ * Aviso para la barra lateral cuando se acerca el borrado: solo aparece al final del plazo
+ * (el último 25 %, máximo 2 días), para no mostrar el aviso en todas las sesiones.
+ */
+export function expiryWarning(updatedAt: string, retentionDays: number, now = Date.now()): string | null {
+  if (retentionDays <= 0) return null;
+  const left = msLeft(updatedAt, retentionDays, now);
+  if (left > Math.min(2 * DAY, retentionDays * DAY * 0.25)) return null;
+  if (left < HOUR) return "se borra en menos de 1 h";
+  if (left < DAY) return `se borra en ${Math.floor(left / HOUR)} h`;
+  const d = Math.ceil(left / DAY);
+  return `se borra en ${d} ${d === 1 ? "día" : "días"}`;
+}
+
+const expiryFmt = new Intl.DateTimeFormat("es", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+
+/** Fecha y hora exactas del borrado automático, para la cabecera de la sesión. */
 export function expiryLabel(updatedAt: string, retentionDays: number): string {
-  return longFmt.format(new Date(new Date(updatedAt).getTime() + retentionDays * 86_400_000));
+  return expiryFmt.format(new Date(new Date(updatedAt).getTime() + retentionDays * DAY));
 }
 
 /** Parte un texto corrido en párrafos de ~3 frases para poder leerlo cómodo. */

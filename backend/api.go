@@ -421,7 +421,9 @@ func spa(dir string) http.Handler {
 	})
 }
 
-// runRetention borra las sesiones sin actividad desde hace más de RetentionDays.
+// runRetention borra las sesiones cuya última actividad (UpdatedAt, guardada en su session.json)
+// es más antigua que maxAge. No usa ningún contador: compara fechas reales, así que funciona
+// igual aunque la app haya estado apagada. Barre al arrancar y luego cada 10 minutos.
 func runRetention(ctx context.Context, store *Store, maxAge time.Duration) {
 	if maxAge <= 0 {
 		slog.Info("borrado automático desactivado")
@@ -435,7 +437,7 @@ func runRetention(ctx context.Context, store *Store, maxAge time.Duration) {
 		}
 	}
 	sweep()
-	t := time.NewTicker(time.Hour)
+	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
 		select {

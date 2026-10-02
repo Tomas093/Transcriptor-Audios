@@ -52,8 +52,10 @@ make down    # lo apaga todo y libera la memoria
 La barra lateral lista tus sesiones, como un chat. Cada vez que sueltas audios en "Nueva sesión" se crea una; puedes **seguir añadiendo audios** a una sesión existente.
 
 - **Renombrar:** haz clic en el título de arriba.
-- **Eliminar:** botón *Eliminar* (te pide confirmar). Borra la sesión y sus audios del disco.
-- **Borrado automático:** las sesiones se borran solas a los **7 días sin actividad**. La barra lateral avisa cuando a una le quedan 2 días o menos.
+- **Eliminar:** el **tacho** al lado de cada sesión en la barra lateral (aparece al pasar el cursor; te pide confirmar). También está el botón *Eliminar* arriba, dentro de la sesión. Borra la sesión y sus audios del disco.
+- **Borrado automático:** las sesiones se borran solas a **1 día (24 h) sin actividad**. La barra lateral avisa cuando a una le quedan menos de 6 horas.
+
+**¿Cómo sabe cuándo pasó el día?** Cada sesión guarda en su `session.json` la fecha y hora de su **última actividad** (cuando se procesó o modificó algo; abrirla para leerla no la renueva). El borrado no usa un contador: compara esa fecha con la hora actual. Lo hace **al arrancar** (`make up`) y **cada 10 minutos** mientras está encendida. Por eso, si apagas todo y vuelves días después, al hacer `make up` se borra de inmediato todo lo que ya pasó el plazo; mientras está apagado no se borra nada.
 
 ### Audios repetidos
 
@@ -128,7 +130,7 @@ Variables que acepta `make` (y el `docker-compose.yml`):
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
 | `WHISPER_THREADS` | `4` | Hilos de Whisper |
 | `WHISPER_FLAGS` | `-fa` | Flags extra de `whisper-server` (`-fa` = flash attention) |
-| `RETENTION_DAYS` | `7` | Días hasta el borrado automático (`0` = nunca) |
+| `RETENTION_DAYS` | `1` | Días sin actividad hasta el borrado automático (`0` = nunca) |
 
 Avanzado (variables de la app): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (`12288`), `MAX_UPLOAD_MB` (`1024`), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; protege contra ataques de *DNS rebinding*).
 

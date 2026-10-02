@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon, Logo } from "./icons";
 import {
-  daysLeft, expiryLabel, fmtDuration, fmtWhen, groupLabel, paragraphs, richBlocks, sessionAsText,
+  expiryLabel, expiryWarning, fmtDuration, fmtWhen, groupLabel, paragraphs, richBlocks, sessionAsText,
 } from "./format";
 import { api } from "./api";
 import type { GlobalSummary, Health, Item, Session, SessionInfo } from "./types";
@@ -62,11 +62,25 @@ export function Sidebar(props: {
   connected: boolean;
   open: boolean;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
   onNew: () => void;
   onClose: () => void;
 }) {
-  const { list, activeId, health, connected, open, onSelect, onNew, onClose } = props;
-  const retention = health?.retentionDays ?? 7;
+  const { list, activeId, health, connected, open, onSelect, onDelete, onNew, onClose } = props;
+  const retention = health?.retentionDays ?? 1;
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  // La confirmación se retira sola a los 5 s, o con Escape.
+  useEffect(() => {
+    if (!confirmId) return;
+    const t = window.setTimeout(() => setConfirmId(null), 5000);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setConfirmId(null);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [confirmId]);
   const groups: { label: string; items: SessionInfo[] }[] = [];
   for (const s of list) {
     const label = groupLabel(s.updatedAt);
@@ -94,9 +108,9 @@ export function Sidebar(props: {
               <h2 className="group-label">{g.label}</h2>
               <ul>
                 {g.items.map((s) => {
-                  const left = daysLeft(s.updatedAt, retention);
+                  const warn = !s.busy ? expiryWarning(s.updatedAt, retention) : null;
                   return (
-                    <li key={s.id}>
+                    <li key={s.id} className="row-wrap">
                       <button
                         type="button"
                         className={`session-row ${s.id === activeId ? "active" : ""}`}
@@ -107,13 +121,38 @@ export function Sidebar(props: {
                         <span className="row-meta">
                           {s.busy ? <Equalizer /> : null}
                           {plural(s.itemCount, "audio", "audios")} · {fmtWhen(s.updatedAt)}
-                          {retention > 0 && left <= 2 && !s.busy ? (
-                            <span className="row-expiry">
-                              {left === 0 ? " · se borra hoy" : ` · se borra en ${plural(left, "día", "días")}`}
-                            </span>
-                          ) : null}
+                          {warn ? <span className="row-expiry"> · {warn}</span> : null}
                         </span>
                       </button>
+                      {confirmId === s.id ? (
+                        <div className="row-confirm" role="alertdialog" aria-label={`Confirmar eliminar ${s.title}`}>
+                          <span>¿Eliminar con sus audios?</span>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            autoFocus
+                            onClick={() => {
+                              setConfirmId(null);
+                              onDelete(s.id);
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                          <button type="button" className="btn btn-sm" onClick={() => setConfirmId(null)}>
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="row-delete"
+                          aria-label={`Eliminar sesión: ${s.title}`}
+                          title="Eliminar sesión"
+                          onClick={() => setConfirmId(s.id)}
+                        >
+                          <Icon name="trash" size={15} />
+                        </button>
+                      )}
                     </li>
                   );
                 })}

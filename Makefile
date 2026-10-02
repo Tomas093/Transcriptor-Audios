@@ -7,7 +7,7 @@ DATA_PATH       ?= $(HOME)/TranscriptorAudios
 OLLAMA_MODEL    ?= qwen2.5:7b
 WHISPER_MODEL_FILE ?= ggml-large-v3-turbo-q5_0.bin
 WHISPER_THREADS ?= 4
-RETENTION_DAYS  ?= 7
+RETENTION_DAYS  ?= 1
 STATE_DIR       ?= $(HOME)/.transcriptor
 MODEL_URL       := https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$(WHISPER_MODEL_FILE)
 
