@@ -2,6 +2,9 @@ import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
+import "./styles/layouts.css";
+import "./styles/skins.css";
+import { applyTheme, currentTheme } from "./theme";
 
 class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -23,6 +26,11 @@ class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
       </div>
     );
   }
+}
+
+{
+  const t = currentTheme();
+  applyTheme(t.style, t.layout); // antes del primer render, para evitar parpadeo
 }
 
 createRoot(document.getElementById("root")!).render(

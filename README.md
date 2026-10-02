@@ -47,6 +47,10 @@ make down    # lo apaga todo y libera la memoria
 3. **Lee.** El texto y el resumen de cada audio van apareciendo en orden. Si subiste varios, arriba aparece el **resumen general**.
 4. Usa **Copiar texto / Copiar resumen / Copiar todo** o **Descargar** (Markdown) para llevarte lo que necesites.
 
+### Estilos (temporal)
+
+El botón **Estilos** (abajo a la derecha) abre un laboratorio para probar el aspecto en vivo: **9 estilos** (Calma, Bento, Neo-brutal, Terminal, Clay, Aurora, Editorial, Cuaderno, Grabadora) combinados con **3 estructuras** (Lateral, Flotante, Pestañas). Tu elección se recuerda; también se puede fijar por URL, por ejemplo `http://localhost:8080/?style=bento&layout=flotante`. Cuando elijas uno, se deja solo ese y se quita el laboratorio.
+
 ### Sesiones
 
 La barra lateral lista tus sesiones, como un chat. Cada vez que sueltas audios en "Nueva sesión" se crea una; puedes **seguir añadiendo audios** a una sesión existente.

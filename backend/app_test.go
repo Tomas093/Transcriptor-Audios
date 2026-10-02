@@ -756,3 +756,19 @@ func TestShutdownMidAudioResumes(t *testing.T) {
 		t.Errorf("el audio debe quedar pendiente tras reiniciar: %v", got)
 	}
 }
+
+func TestExplicitTitleIsNotOverwrittenByAutoTitle(t *testing.T) {
+	e := newEnv(t)
+	a := makeAudio(t, t.TempDir(), "a.wav")
+	resp, body := e.do(t, "POST", "/api/sessions", []byte(`{"title":"Mi sesión"}`), "application/json")
+	if resp.StatusCode != 201 {
+		t.Fatalf("%d %s", resp.StatusCode, body)
+	}
+	var sess Session
+	json.Unmarshal(body, &sess)
+	e.upload(t, sess.ID, map[string]string{"x.opus": a})
+	s := e.wait(t, sess.ID, allSettled)
+	if s.Title != "Mi sesión" {
+		t.Errorf("el título explícito se pisó: %q", s.Title)
+	}
+}

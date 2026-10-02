@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Composer, GlobalBlock, ItemBlock, SessionHeader, Sidebar, Welcome } from "./components";
 import { Icon } from "./icons";
+import { StyleLab } from "./StyleLab";
 import { navigate, useApp } from "./useApp";
 
 export default function App() {
@@ -196,6 +197,8 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      <StyleLab />
 
       <div className="sr-only" aria-live="polite">
         {announce}

@@ -165,6 +165,9 @@ func (a *API) createSession(w http.ResponseWriter, r *http.Request) {
 		title = "Nueva sesión"
 	}
 	sess := a.store.Create(title)
+	if title != "Nueva sesión" { // un título puesto a propósito no se reemplaza por el automático
+		a.store.Update(sess.ID, func(s *Session) { s.TitleAuto = false })
+	}
 	data, _ := a.store.Snapshot(sess.ID)
 	writeRaw(w, http.StatusCreated, data)
 }
