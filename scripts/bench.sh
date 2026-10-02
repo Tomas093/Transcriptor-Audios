@@ -4,7 +4,7 @@
 set -euo pipefail
 
 FILE="${1:?Uso: scripts/bench.sh ruta/al/audio.opus}"
-BASE="http://127.0.0.1:${PORT:-8080}"
+BASE="http://127.0.0.1:${PORT:-4747}"
 [[ -f "$FILE" ]] || { echo "No existe $FILE" >&2; exit 1; }
 curl -fsS "$BASE/api/health" >/dev/null || { echo "La app no responde en $BASE. Ejecuta: make up" >&2; exit 1; }
 

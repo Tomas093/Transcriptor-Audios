@@ -46,7 +46,7 @@ func (a *API) Handler() http.Handler {
 	return secure(mux, a.cfg.AllowedHosts)
 }
 
-// hostName devuelve el host de una cabecera Host sin el puerto ("localhost:8080" → "localhost").
+// hostName devuelve el host de una cabecera Host sin el puerto ("localhost:4747" → "localhost").
 func hostName(hostport string) string {
 	if h, _, err := net.SplitHostPort(hostport); err == nil {
 		return h

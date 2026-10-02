@@ -54,7 +54,7 @@ func envInt(key string, def int) int {
 
 func loadConfig() Config {
 	return Config{
-		Addr:        env("ADDR", ":8080"),
+		Addr:        env("ADDR", ":4747"),
 		DataDir:     env("DATA_DIR", "/data"),
 		WebDir:      env("WEB_DIR", "/app/web"),
 		TmpDir:      env("TMP_DIR", filepath.Join(os.TempDir(), "transcriptor")),

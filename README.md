@@ -34,11 +34,24 @@ make setup
 Desde la carpeta del proyecto, en la Terminal:
 
 ```bash
-make up      # levanta todo y abre http://localhost:8080
+make up      # levanta todo y abre http://localhost:4747
 make down    # lo apaga todo y libera la memoria
 ```
 
 > La primera vez que arranca, Metal (la GPU del Mac) tarda unos 15 s en preparar sus kernels. Es normal.
+>
+> La web queda en el puerto **4747** (poco usado, para no chocar con 8080 y similares). Si por algún motivo estuviera ocupado, `make up` te avisa y puedes elegir otro: `make up PORT=4748`.
+
+### Arranque automático (opcional)
+
+`make up` levanta todo junto: Whisper, Ollama y el contenedor. Si no quieres ni siquiera ejecutarlo, activa el arranque automático:
+
+```bash
+make autostart       # desde ahora, todo se levanta solo al iniciar sesión en el Mac
+make autostart-off   # lo desactiva
+```
+
+Al iniciar sesión abre Docker Desktop si hace falta, espera a que esté listo y ejecuta `make up` sin abrir el navegador; entra a `http://localhost:4747` cuando quieras. Registro: `~/.transcriptor/autostart.log`. Ten en cuenta que Whisper queda cargado en memoria (~1,5 GB) mientras el Mac esté encendido; Ollama descarga su modelo solo a los 60 s. Si cambias el puerto o el modelo, vuelve a ejecutar `make autostart PORT=…` para que lo recuerde.
 
 **Paso a paso:**
 
@@ -94,6 +107,7 @@ Registros: `make logs` (la app) y `~/.transcriptor/whisper.log`, `~/.transcripto
 |---|---|
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
+| `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
 | `make logs` | Registros de la app (Ctrl+C para salir) |
 | `make doctor` | Diagnóstico + prueba real con voz generada: transcripción, resúmenes, **3 subidas simultáneas**, detección de audios repetidos y rendimiento |
@@ -101,7 +115,7 @@ Registros: `make logs` (la app) y `~/.transcriptor/whisper.log`, `~/.transcripto
 | `make bench FILE=audio.opus` | Mide tiempo, CPU y memoria con un audio tuyo |
 | `make purge` | Borra todas las sesiones (pide confirmación) |
 | `make test` | Tests del backend y compilación de la web |
-| `make dev` | Desarrollo sin Docker (API en :8080, web con recarga en :5173) |
+| `make dev` | Desarrollo sin Docker (API en :4747, web con recarga en :5173) |
 
 ## 5. Que el Mac no se caliente
 
@@ -125,7 +139,7 @@ Variables que acepta `make` (y el `docker-compose.yml`):
 
 | Variable | Por defecto | Qué es |
 |---|---|---|
-| `PORT` | `8080` | Puerto de la web |
+| `PORT` | `4747` | Puerto de la web |
 | `DATA_PATH` | `~/TranscriptorAudios` | Dónde se guardan las sesiones |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
 | `WHISPER_THREADS` | `4` | Hilos de Whisper |

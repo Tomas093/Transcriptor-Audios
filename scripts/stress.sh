@@ -4,7 +4,7 @@
 # Uso: make stress   (con `make up` ya ejecutado)
 set -uo pipefail
 
-BASE="http://127.0.0.1:${PORT:-8080}"
+BASE="http://127.0.0.1:${PORT:-4747}"
 PARRAFOS="${STRESS_PARRAFOS:-14}"   # ~4 min de voz con 14 párrafos
 curl -fsS -m 5 "$BASE/api/health" >/dev/null 2>&1 || { echo "La app no responde en $BASE. Ejecuta: make up" >&2; exit 1; }
 command -v say >/dev/null || { echo "Hace falta 'say' (solo macOS)." >&2; exit 1; }

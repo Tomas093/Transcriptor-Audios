@@ -10,7 +10,7 @@ services:
     restart: "no"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
-      - "127.0.0.1:${PORT:-8080}:8080" # solo accesible desde tu Mac
+      - "127.0.0.1:${PORT:-4747}:8080" # solo accesible desde tu Mac
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
