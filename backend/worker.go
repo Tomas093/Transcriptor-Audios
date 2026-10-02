@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -39,12 +38,12 @@ type Worker struct {
 	store   *Store
 	whisper *Whisper
 	ollama  *Ollama
-	dataDir string
+	tmpDir  string
 	jobs    chan batch
 }
 
-func NewWorker(store *Store, whisper *Whisper, ollama *Ollama, dataDir string) *Worker {
-	return &Worker{store: store, whisper: whisper, ollama: ollama, dataDir: dataDir, jobs: make(chan batch, 512)}
+func NewWorker(store *Store, whisper *Whisper, ollama *Ollama, tmpDir string) *Worker {
+	return &Worker{store: store, whisper: whisper, ollama: ollama, tmpDir: tmpDir, jobs: make(chan batch, 512)}
 }
 
 func (w *Worker) Enqueue(b batch) error {
@@ -57,9 +56,8 @@ func (w *Worker) Enqueue(b batch) error {
 }
 
 func (w *Worker) Run(ctx context.Context) {
-	tmp := filepath.Join(w.dataDir, "tmp")
-	_ = os.RemoveAll(tmp)
-	_ = os.MkdirAll(tmp, 0o755)
+	_ = os.RemoveAll(w.tmpDir)
+	_ = os.MkdirAll(w.tmpDir, 0o755)
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,7 +117,7 @@ func (w *Worker) transcribe(ctx context.Context, sessionID, itemID string) {
 		w.setItem(sessionID, itemID, func(_ *Session, it *Item) { it.Status, it.Error = StatusError, err.Error() })
 	}
 
-	wav, err := os.CreateTemp(filepath.Join(w.dataDir, "tmp"), "audio-*.wav")
+	wav, err := os.CreateTemp(w.tmpDir, "audio-*.wav")
 	if err != nil {
 		fail(err)
 		return
@@ -129,13 +127,13 @@ func (w *Worker) transcribe(ctx context.Context, sessionID, itemID string) {
 	defer os.Remove(wavPath)
 
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	dur, err := convertToWav(cctx, w.store.AudioPath(sessionID, s.file), wavPath)
+	dur, wave, err := convertToWav(cctx, w.store.AudioPath(sessionID, s.file), wavPath)
 	cancel()
 	if err != nil {
 		fail(err)
 		return
 	}
-	w.setItem(sessionID, itemID, func(_ *Session, it *Item) { it.Status, it.DurationSec = StatusTranscribing, dur })
+	w.setItem(sessionID, itemID, func(_ *Session, it *Item) { it.Status, it.DurationSec, it.Wave = StatusTranscribing, dur, wave })
 
 	tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	text, err := w.whisper.Transcribe(tctx, wavPath)

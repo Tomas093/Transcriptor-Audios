@@ -52,6 +52,7 @@ type Item struct {
 	Error          string    `json:"error,omitempty"`
 	SummaryError   string    `json:"summaryError,omitempty"`
 	DurationSec    float64   `json:"durationSec,omitempty"`
+	Wave           []int     `json:"wave,omitempty"`
 	AddedAt        time.Time `json:"addedAt"`
 }
 

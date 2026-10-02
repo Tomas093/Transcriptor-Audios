@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -11,6 +12,7 @@ type Config struct {
 	Addr            string
 	DataDir         string
 	WebDir          string
+	TmpDir          string
 	WhisperURL      string
 	WhisperLang     string
 	WhisperPrompt   string
@@ -43,6 +45,7 @@ func loadConfig() Config {
 		Addr:        env("ADDR", ":8080"),
 		DataDir:     env("DATA_DIR", "/data"),
 		WebDir:      env("WEB_DIR", "/app/web"),
+		TmpDir:      env("TMP_DIR", filepath.Join(os.TempDir(), "transcriptor")),
 		WhisperURL:  env("WHISPER_URL", "http://host.docker.internal:8178"),
 		WhisperLang: env("WHISPER_LANG", "es"),
 		// El prompt inicial ayuda a Whisper con el spanglish: le da vocabulario en inglés

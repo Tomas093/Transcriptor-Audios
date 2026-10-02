@@ -120,7 +120,7 @@ func newEnv(t *testing.T) *testEnv {
 	web := filepath.Join(dir, "web")
 	os.MkdirAll(web, 0o755)
 	os.WriteFile(filepath.Join(web, "index.html"), []byte("<html>app</html>"), 0o644)
-	cfg := Config{DataDir: dir, WebDir: web, WhisperURL: f.whisper.URL, WhisperLang: "es", WhisperPrompt: "x",
+	cfg := Config{DataDir: dir, TmpDir: filepath.Join(dir, "tmp"), WebDir: web, WhisperURL: f.whisper.URL, WhisperLang: "es", WhisperPrompt: "x",
 		OllamaURL: f.ollama.URL, OllamaModel: "qwen2.5:7b", OllamaKeepAlive: "30s", OllamaNumCtx: 8192,
 		RetentionDays: 7, MaxUploadBytes: 64 << 20}
 	hub := NewHub()
@@ -128,7 +128,7 @@ func newEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker := NewWorker(store, NewWhisper(cfg), NewOllama(cfg), dir)
+	worker := NewWorker(store, NewWhisper(cfg), NewOllama(cfg), cfg.TmpDir)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go worker.Run(ctx)
@@ -238,8 +238,11 @@ func TestPipelineMultipleAudios(t *testing.T) {
 		if strings.Contains(it.Text, "BLANK_AUDIO") {
 			t.Errorf("texto sin limpiar: %q", it.Text)
 		}
-		if it.DurationSec < 0.5 || it.DurationSec > 1.5 {
+		if it.DurationSec < 0.9 || it.DurationSec > 1.1 {
 			t.Errorf("duración %v", it.DurationSec)
+		}
+		if len(it.Wave) != waveBins {
+			t.Errorf("forma de onda de %d barras, quería %d", len(it.Wave), waveBins)
 		}
 	}
 	if s.Global.Status != GlobalDone || s.Global.Text == "" || s.Global.Items != 3 {
@@ -264,7 +267,7 @@ func TestPipelineMultipleAudios(t *testing.T) {
 		}
 	}
 	// El WAV temporal se borra.
-	if left, _ := os.ReadDir(filepath.Join(e.cfg.DataDir, "tmp")); len(left) != 0 {
+	if left, _ := os.ReadDir(e.cfg.TmpDir); len(left) != 0 {
 		t.Errorf("quedaron temporales: %v", left)
 	}
 
@@ -455,5 +458,12 @@ func TestLargeGlobalFallsBackToSummaries(t *testing.T) {
 	in := buildGlobalInput(sess)
 	if !strings.Contains(in.prompt, "RESUMEN-UNO") || strings.Contains(in.prompt, "palabra palabra") {
 		t.Errorf("con mucho texto debe usar los resúmenes individuales")
+	}
+}
+
+func TestWaveformIsJSONArray(t *testing.T) {
+	raw, _ := json.Marshal(Item{Wave: []int{0, 50, 100}})
+	if !strings.Contains(string(raw), `"wave":[0,50,100]`) {
+		t.Fatalf("la forma de onda debe serializarse como array JSON: %s", raw)
 	}
 }

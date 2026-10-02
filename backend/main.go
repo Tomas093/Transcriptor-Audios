@@ -22,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 	whisper, ollama := NewWhisper(cfg), NewOllama(cfg)
-	worker := NewWorker(store, whisper, ollama, cfg.DataDir)
+	worker := NewWorker(store, whisper, ollama, cfg.TmpDir)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
