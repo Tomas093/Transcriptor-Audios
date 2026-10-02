@@ -1,58 +1,38 @@
-// Laboratorio de estilos: dos ejes independientes que se combinan en vivo.
-//  · estilo (piel visual)  → data-style en <html>
-//  · estructura (layout)   → data-layout en <html>
-// Se recuerdan en localStorage y se pueden fijar por URL: ?style=neo&layout=arriba
+// Laboratorio de estilos (temporal): piel visual en vivo con data-style en <html>.
+// Se recuerda en localStorage y se puede fijar por URL: ?style=poster
 
 export const SKINS = [
-  { id: "calma", name: "Calma", note: "El actual", sw: ["#ffffff", "#a3195b"] },
-  { id: "bento", name: "Bento", note: "Teselas modulares", sw: ["#eef0f6", "#fff3a8", "#a3195b"] },
-  { id: "neo", name: "Neo-brutal", note: "Bordes gruesos, sombras duras", sw: ["#ffe94d", "#ff7ac6", "#3b5bff"] },
-  { id: "terminal", name: "Terminal", note: "Fósforo verde, monoespaciada", sw: ["#06100a", "#4dff9a"] },
-  { id: "clay", name: "Clay", note: "Blando, inflado, pastel", sw: ["#fbe3e4", "#ff8a9b", "#bfe9d6"] },
-  { id: "aurora", name: "Aurora", note: "Oscuro con luz y vidrio", sw: ["#0b1020", "#2ee6c5", "#ff4fa3"] },
-  { id: "editorial", name: "Editorial", note: "Revista: serif y filetes", sw: ["#ffffff", "#141414", "#d6361f"] },
-  { id: "cuaderno", name: "Cuaderno", note: "Hoja rayada y post-its", sw: ["#fbfdff", "#ffe36e", "#ff9fc4"] },
-  { id: "grabadora", name: "Grabadora", note: "Aparato con pantalla LCD", sw: ["#2b2926", "#c9c6bd", "#ff7a1a"] },
-] as const;
-
-export const LAYOUTS = [
-  { id: "lateral", name: "Lateral", note: "Barra a la izquierda" },
-  { id: "flotante", name: "Flotante", note: "Paneles sueltos" },
-  { id: "arriba", name: "Pestañas", note: "Sesiones arriba" },
+  { id: "calma", name: "Calma", note: "El actual (referencia)", sw: ["#ffffff", "#a3195b"] },
+  { id: "poster", name: "Póster suizo", note: "Tipografía gigante, naranja señal", sw: ["#ffffff", "#1a1a1a", "#ff5a1f"] },
+  { id: "win95", name: "Windows 95", note: "Escritorio turquesa, ventanas", sw: ["#008080", "#c0c0c0", "#000080"] },
+  { id: "riso", name: "Risografía", note: "Zine a dos tintas, tramas", sw: ["#fff7ec", "#ff3fa4", "#2a3cc4"] },
+  { id: "hud", name: "HUD ciberpunk", note: "Esquinas cortadas, neón", sw: ["#0b0c14", "#f3ee2f", "#31e0f0"] },
+  { id: "pixel", name: "Pixel 8-bit", note: "Game Boy, bloques", sw: ["#0f380f", "#306230", "#9bbc0f"] },
+  { id: "aero", name: "Frutiger Aero", note: "Cielo, vidrio brillante, 2008", sw: ["#7ec8ff", "#e9fbff", "#8be36b"] },
+  { id: "constructivismo", name: "Constructivismo", note: "Rojo, negro, diagonales", sw: ["#e8e6e1", "#141414", "#e0301e"] },
 ] as const;
 
 export type SkinId = (typeof SKINS)[number]["id"];
-export type LayoutId = (typeof LAYOUTS)[number]["id"];
 
-const KEY_STYLE = "ts-style";
-const KEY_LAYOUT = "ts-layout";
+const KEY = "ts-style-v2";
 
-function read(key: string, param: string, valid: readonly string[], fallback: string): string {
+export function currentStyle(): SkinId {
+  const valid: readonly string[] = SKINS.map((s) => s.id);
   try {
-    const q = new URLSearchParams(location.search).get(param);
-    if (q && valid.includes(q)) return q;
-    const v = localStorage.getItem(key);
-    if (v && valid.includes(v)) return v;
+    const q = new URLSearchParams(location.search).get("style");
+    if (q && valid.includes(q)) return q as SkinId;
+    const v = localStorage.getItem(KEY);
+    if (v && valid.includes(v)) return v as SkinId;
   } catch {
-    /* sin almacenamiento: se usa el valor por defecto */
+    /* sin almacenamiento: valor por defecto */
   }
-  return fallback;
+  return "calma";
 }
 
-export function currentTheme(): { style: SkinId; layout: LayoutId } {
-  return {
-    style: read(KEY_STYLE, "style", SKINS.map((s) => s.id), "calma") as SkinId,
-    layout: read(KEY_LAYOUT, "layout", LAYOUTS.map((l) => l.id), "lateral") as LayoutId,
-  };
-}
-
-export function applyTheme(style: SkinId, layout: LayoutId) {
-  const root = document.documentElement;
-  root.dataset.style = style;
-  root.dataset.layout = layout;
+export function applyStyle(style: SkinId) {
+  document.documentElement.dataset.style = style;
   try {
-    localStorage.setItem(KEY_STYLE, style);
-    localStorage.setItem(KEY_LAYOUT, layout);
+    localStorage.setItem(KEY, style);
   } catch {
     /* ignorar */
   }

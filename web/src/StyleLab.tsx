@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
-import { applyTheme, currentTheme, LAYOUTS, SKINS, type LayoutId, type SkinId } from "./theme";
+import { applyStyle, currentStyle, SKINS, type SkinId } from "./theme";
 
-/** Botón flotante para probar estilos y estructuras en vivo. Es temporal: se quita al elegir. */
+/** Botón flotante para probar estilos en vivo. Es temporal: se quita al elegir uno. */
 export function StyleLab() {
   const [open, setOpen] = useState(false);
-  const [{ style, layout }, setTheme] = useState(currentTheme);
+  const [style, setStyle] = useState<SkinId>(currentStyle);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => applyTheme(style, layout), [style, layout]);
+  useEffect(() => applyStyle(style), [style]);
 
   useEffect(() => {
     if (!open) return;
@@ -34,7 +34,7 @@ export function StyleLab() {
                 type="button"
                 className={`lab-skin ${s.id === style ? "on" : ""}`}
                 aria-pressed={s.id === style}
-                onClick={() => setTheme((t) => ({ ...t, style: s.id as SkinId }))}
+                onClick={() => setStyle(s.id)}
               >
                 <span className="lab-sw" aria-hidden="true">
                   {s.sw.map((c) => (
@@ -43,21 +43,6 @@ export function StyleLab() {
                 </span>
                 <span className="lab-name">{s.name}</span>
                 <span className="lab-note">{s.note}</span>
-              </button>
-            ))}
-          </div>
-          <p className="lab-title">Estructura</p>
-          <div className="lab-layouts">
-            {LAYOUTS.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                className={`lab-layout ${l.id === layout ? "on" : ""}`}
-                aria-pressed={l.id === layout}
-                title={l.note}
-                onClick={() => setTheme((t) => ({ ...t, layout: l.id as LayoutId }))}
-              >
-                {l.name}
               </button>
             ))}
           </div>
