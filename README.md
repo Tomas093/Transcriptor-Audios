@@ -55,7 +55,7 @@ Aparece **Transcriptor** en el Escritorio y en Launchpad. Desde ahí:
 - **Doble clic** (apagado): abre Docker Desktop si hace falta, enciende todo y abre la web.
 - **Doble clic** (encendido): pregunta **Abrir** o **Apagar** (apagar libera toda la memoria).
 
-No queda nada consumiendo mientras no lo uses: solo está encendido cuando tú lo enciendes. `make app-off` borra el ícono. Registro: `~/.transcriptor/launcher.log`.
+No queda nada consumiendo mientras no lo uses: solo está encendido cuando tú lo enciendes. `make app-off` borra el ícono. Para usar otra imagen: `make app ICON=/ruta/a/mi-imagen.png` (PNG cuadrado, mejor de 1024×1024). Si el ícono no cambia al instante, reinicia el Dock: `killall Dock`. Registro: `~/.transcriptor/launcher.log`.
 
 ### Arranque automático (opcional)
 

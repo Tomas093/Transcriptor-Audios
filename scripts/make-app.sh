@@ -9,6 +9,20 @@ APP_DIRS=("${APP_DIR:-$HOME/Applications}" "${DESKTOP_DIR:-$HOME/Desktop}")
 NAME="Transcriptor.app"
 PORT="${PORT:-4747}"
 
+ICON="${ICON:-$ROOT/assets/icon.png}"   # cualquier PNG cuadrado (mejor 1024x1024)
+
+# Convierte el PNG en un .icns con las herramientas de macOS (sips + iconutil).
+make_icns() { # png, destino.icns
+  local set; set="$(mktemp -d)/app.iconset"; mkdir -p "$set"
+  local s
+  for s in 16 32 128 256 512; do
+    sips -z "$s" "$s" "$1" --out "$set/icon_${s}x${s}.png" >/dev/null
+    sips -z "$((s * 2))" "$((s * 2))" "$1" --out "$set/icon_${s}x${s}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$set" -o "$2"
+  rm -rf "$(dirname "$set")"
+}
+
 # AppleScript: comillas dobles de la ruta escapadas
 q() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 
@@ -44,6 +58,9 @@ APPLESCRIPT
     mkdir -p "$d"
     rm -rf "${d:?}/$NAME"
     osacompile -o "$d/$NAME" "$src"
+    if [[ -f "$ICON" ]] && command -v sips >/dev/null && command -v iconutil >/dev/null; then
+      make_icns "$ICON" "$d/$NAME/Contents/Resources/applet.icns" && touch "$d/$NAME"
+    fi
     echo "Creada: $d/$NAME"
   done
   rm -rf "$tmp"

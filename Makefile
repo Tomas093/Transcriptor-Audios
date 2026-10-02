@@ -51,7 +51,7 @@ check-port:
 	  echo "El puerto $(PORT) ya está en uso por otra aplicación. Elige otro, por ejemplo: make up PORT=4748"; exit 1; fi
 
 app: ## Crea el ícono «Transcriptor» (Escritorio y Launchpad): doble clic para encender/apagar, sin Terminal
-	PORT=$(PORT) ./scripts/make-app.sh install
+	PORT=$(PORT) ICON=$(ICON) ./scripts/make-app.sh install
 
 app-off: ## Borra el ícono «Transcriptor»
 	./scripts/make-app.sh uninstall
