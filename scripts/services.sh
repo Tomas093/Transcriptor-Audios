@@ -25,6 +25,7 @@ start_whisper() {
   command -v "$WHISPER_BIN" >/dev/null || { echo "Falta $WHISPER_BIN. Ejecuta: make setup" >&2; exit 1; }
   [[ -f "$MODEL" ]] || { echo "Falta el modelo $MODEL. Ejecuta: make setup" >&2; exit 1; }
   echo "Arrancando whisper-server (modelo $MODEL_FILE)…"
+  echo "  (al arrancar, Metal compila sus kernels de GPU: puede tardar unos 15 s; es normal)"
   # nice: prioridad baja, así el Mac sigue fluido mientras transcribe.
   # shellcheck disable=SC2086  # WHISPER_FLAGS son varios flags a propósito
   nohup nice -n 10 "$WHISPER_BIN" -m "$MODEL" --host 127.0.0.1 --port "$WHISPER_PORT" -t "$WHISPER_THREADS" $WHISPER_FLAGS \
