@@ -489,3 +489,65 @@ func TestDNSRebindingIsBlocked(t *testing.T) {
 		}
 	}
 }
+
+// Varias subidas simultáneas (misma sesión y sesiones distintas): todos los audios deben
+// terminar con texto y resumen, y el modelo nunca debe recibir dos peticiones a la vez.
+func TestConcurrentUploadsAllSummarized(t *testing.T) {
+	e := newEnv(t)
+	a := makeAudio(t, t.TempDir(), "a.wav")
+	var inflight, maxInflight atomic.Int32
+	e.f.ollama.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			fmt.Fprint(w, `{"models":[{"name":"qwen2.5:7b"}]}`)
+			return
+		}
+		n := inflight.Add(1)
+		defer inflight.Add(-1)
+		for {
+			m := maxInflight.Load()
+			if n <= m || maxInflight.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+		json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": "Resumen de prueba."}})
+	})
+
+	shared := e.createSession(t)
+	other := []Session{e.createSession(t), e.createSession(t)}
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ { // 4 subidas a la vez a la misma sesión
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			e.upload(t, shared.ID, map[string]string{fmt.Sprintf("s%d-a.opus", i): a, fmt.Sprintf("s%d-b.opus", i): a})
+		}(i)
+	}
+	for _, s := range other {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			e.upload(t, id, map[string]string{"x1.opus": a, "x2.opus": a, "x3.opus": a})
+		}(s.ID)
+	}
+	wg.Wait()
+
+	check := func(id string, want int) {
+		s := e.wait(t, id, func(s *Session) bool { return allSettled(s) && len(s.Items) == want && s.Global.Status == GlobalDone })
+		for _, it := range s.Items {
+			if it.Status != StatusDone || it.Text == "" || it.Summary == "" || it.SummaryError != "" || it.Error != "" {
+				t.Errorf("sesión %s audio %s incompleto: %+v", id, it.Name, it)
+			}
+		}
+		if s.Global.Items != want {
+			t.Errorf("resumen general de %d audios, quería %d", s.Global.Items, want)
+		}
+	}
+	check(shared.ID, 8)
+	for _, s := range other {
+		check(s.ID, 3)
+	}
+	if got := maxInflight.Load(); got != 1 {
+		t.Errorf("el modelo recibió %d peticiones simultáneas, debe ser 1", got)
+	}
+}
