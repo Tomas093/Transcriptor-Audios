@@ -95,6 +95,14 @@ PRODUCT.md contexto de producto y diseño
 
 ## Estado de verificación
 
-Probado de punta a punta con **Whisper y Ollama simulados** (misma API que los reales): tests del backend con detector de carreras, imagen Docker (solo lectura, usuario sin privilegios), y el flujo completo en navegador en claro, oscuro y móvil, con auditoría de accesibilidad (axe) sin violaciones.
+Probado de punta a punta:
 
-**No verificado todavía en un Mac real**: el arranque de `whisper-server` y Ollama con Metal, los tiempos y el consumo reales. Para eso está `make bench`. Detalles que se asumen del `whisper-server` de whisper.cpp: endpoint `POST /inference` con los campos `file`, `language`, `prompt`, `response_format` y `temperature`, y la fórmula de Homebrew `whisper-cpp`.
+- **Backend** (Go): 14 tests con detector de carreras, repetidos sin fallos.
+- **Contra el `whisper-server` real** (whisper.cpp 1.9.4, compilado desde el código fuente, en CPU y con un modelo de pruebas): el cliente, el formato de la petición (`/inference`, `language`, `prompt`, `carry_initial_prompt`, `response_format`) y los flags del script (`-m --host --port -t -fa`) funcionan; `scripts/services.sh` y `scripts/bench.sh` también.
+- **Docker**: la imagen corre con sistema de ficheros de solo lectura y usuario sin privilegios; el flujo completo en navegador (claro, oscuro, móvil, errores y reintentos) sin errores y con auditoría de accesibilidad (axe) sin violaciones.
+
+**No se pudo verificar fuera de un Mac real:**
+
+- La aceleración con Metal, los **tiempos y el consumo reales** (usa `make bench FILE=audio.opus`) y la calidad de transcripción con `large-v3-turbo`.
+- El resumen con Ollama + `qwen2.5:7b` (se probó contra un servidor que imita su API `/api/chat`).
+- Que Homebrew instale el binario `whisper-server`. `make setup` lo comprueba y, si falta, te da los comandos para compilarlo (`WHISPER_BIN=…`).

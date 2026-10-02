@@ -10,6 +10,8 @@ WHISPER_PORT="${WHISPER_PORT:-8178}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:7b}"
 WHISPER_THREADS="${WHISPER_THREADS:-4}"
+WHISPER_BIN="${WHISPER_BIN:-whisper-server}"   # ruta al binario si lo compilaste a mano
+WHISPER_FLAGS="${WHISPER_FLAGS:--fa}"           # -fa: flash attention (menos cómputo en GPU)
 mkdir -p "$STATE_DIR"
 
 up() { curl -fsS -m 2 -o /dev/null "$1" 2>/dev/null; }
@@ -20,11 +22,12 @@ alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 start_whisper() {
   if up "http://127.0.0.1:$WHISPER_PORT/"; then echo "whisper-server ya está en marcha"; return; fi
-  command -v whisper-server >/dev/null || { echo "Falta whisper-server. Ejecuta: make setup" >&2; exit 1; }
+  command -v "$WHISPER_BIN" >/dev/null || { echo "Falta $WHISPER_BIN. Ejecuta: make setup" >&2; exit 1; }
   [[ -f "$MODEL" ]] || { echo "Falta el modelo $MODEL. Ejecuta: make setup" >&2; exit 1; }
   echo "Arrancando whisper-server (modelo $MODEL_FILE)…"
   # nice: prioridad baja, así el Mac sigue fluido mientras transcribe.
-  nohup nice -n 10 whisper-server -m "$MODEL" --host 127.0.0.1 --port "$WHISPER_PORT" -t "$WHISPER_THREADS" \
+  # shellcheck disable=SC2086  # WHISPER_FLAGS son varios flags a propósito
+  nohup nice -n 10 "$WHISPER_BIN" -m "$MODEL" --host 127.0.0.1 --port "$WHISPER_PORT" -t "$WHISPER_THREADS" $WHISPER_FLAGS \
     >>"$STATE_DIR/whisper.log" 2>&1 &
   echo $! >"$STATE_DIR/whisper.pid"
   wait_for "http://127.0.0.1:$WHISPER_PORT/" 90 || { echo "whisper-server no arrancó; mira $STATE_DIR/whisper.log" >&2; exit 1; }

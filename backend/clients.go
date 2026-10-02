@@ -91,6 +91,9 @@ func (w *Whisper) Transcribe(ctx context.Context, wavPath string) (string, error
 			}
 			if w.prompt != "" {
 				fields["prompt"] = w.prompt
+				// Repite el vocabulario (spanglish) en cada ventana de 30 s; sin esto, en audios
+				// largos el prompt solo influye en la primera ventana.
+				fields["carry_initial_prompt"] = "true"
 			}
 			for k, v := range fields {
 				if err := mw.WriteField(k, v); err != nil {

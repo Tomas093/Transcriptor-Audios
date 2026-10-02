@@ -66,7 +66,7 @@ func newFakes(t *testing.T) *fakes {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		if r.FormValue("language") != "es" || r.FormValue("response_format") != "json" {
+		if r.FormValue("language") != "es" || r.FormValue("response_format") != "json" || r.FormValue("carry_initial_prompt") != "true" {
 			http.Error(w, "parámetros incorrectos", 400)
 			return
 		}

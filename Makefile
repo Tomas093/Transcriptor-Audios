@@ -15,7 +15,7 @@ TZ_DETECT := $(shell readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||
 export TZ ?= $(if $(TZ_DETECT),$(TZ_DETECT),UTC)
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
-export PORT DATA_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS
+export PORT DATA_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
 
 help: ## Muestra esta ayuda
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[1mmake %-8s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -24,6 +24,11 @@ setup: ## Instala y descarga todo lo necesario (una sola vez)
 	@command -v brew >/dev/null || { echo "Instala Homebrew primero: https://brew.sh"; exit 1; }
 	@command -v docker >/dev/null || { echo "Instala Docker Desktop primero: https://www.docker.com/products/docker-desktop"; exit 1; }
 	brew list whisper-cpp >/dev/null 2>&1 || brew install whisper-cpp
+	@command -v "$${WHISPER_BIN:-whisper-server}" >/dev/null || { \
+	  echo; echo "Homebrew no instaló el binario 'whisper-server'. Compílalo (Metal viene activado en Mac):"; \
+	  echo "  git clone https://github.com/ggml-org/whisper.cpp && cd whisper.cpp"; \
+	  echo "  cmake -B build && cmake --build build -j --config Release --target whisper-server"; \
+	  echo "y vuelve a ejecutar: make setup WHISPER_BIN=\$$PWD/build/bin/whisper-server"; exit 1; }
 	brew list ollama >/dev/null 2>&1 || brew install ollama
 	mkdir -p "$(STATE_DIR)/models" "$(DATA_PATH)"
 	@if [ -f "$(STATE_DIR)/models/$(WHISPER_MODEL_FILE)" ]; then echo "Modelo de Whisper ya descargado"; \
