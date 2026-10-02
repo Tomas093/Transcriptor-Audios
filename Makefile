@@ -50,6 +50,12 @@ check-port:
 	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx transcriptor; then \
 	  echo "El puerto $(PORT) ya está en uso por otra aplicación. Elige otro, por ejemplo: make up PORT=4748"; exit 1; fi
 
+app: ## Crea el ícono «Transcriptor» (Escritorio y Launchpad): doble clic para encender/apagar, sin Terminal
+	PORT=$(PORT) ./scripts/make-app.sh install
+
+app-off: ## Borra el ícono «Transcriptor»
+	./scripts/make-app.sh uninstall
+
 autostart: ## Arranca todo solo al iniciar sesión en el Mac (make autostart-off lo desactiva)
 	PORT=$(PORT) DATA_PATH="$(DATA_PATH)" OLLAMA_MODEL=$(OLLAMA_MODEL) WHISPER_THREADS=$(WHISPER_THREADS) RETENTION_DAYS=$(RETENTION_DAYS) ./scripts/autostart.sh install
 
@@ -91,4 +97,4 @@ dev: ## Desarrollo local sin Docker (API en :$(PORT), web con recarga en :5173)
 	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:$(PORT) go run .) & \
 	wait
 
-.PHONY: help setup up check-port autostart autostart-off down status logs doctor stress bench purge test dev
+.PHONY: help setup up check-port app app-off autostart autostart-off down status logs doctor stress bench purge test dev

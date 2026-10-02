@@ -42,6 +42,21 @@ make down    # lo apaga todo y libera la memoria
 >
 > La web queda en el puerto **4747** (poco usado, para no chocar con 8080 y similares). Si por algún motivo estuviera ocupado, `make up` te avisa y puedes elegir otro: `make up PORT=4748`.
 
+### Sin Terminal: ícono con doble clic
+
+Si no quieres abrir la Terminal ni escribir comandos, crea el ícono una sola vez:
+
+```bash
+make app
+```
+
+Aparece **Transcriptor** en el Escritorio y en Launchpad. Desde ahí:
+
+- **Doble clic** (apagado): abre Docker Desktop si hace falta, enciende todo y abre la web.
+- **Doble clic** (encendido): pregunta **Abrir** o **Apagar** (apagar libera toda la memoria).
+
+No queda nada consumiendo mientras no lo uses: solo está encendido cuando tú lo enciendes. `make app-off` borra el ícono. Registro: `~/.transcriptor/launcher.log`.
+
 ### Arranque automático (opcional)
 
 `make up` levanta todo junto: Whisper, Ollama y el contenedor. Si no quieres ni siquiera ejecutarlo, activa el arranque automático:
@@ -107,6 +122,7 @@ Registros: `make logs` (la app) y `~/.transcriptor/whisper.log`, `~/.transcripto
 |---|---|
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
+| `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
 | `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
 | `make logs` | Registros de la app (Ctrl+C para salir) |
@@ -167,7 +183,7 @@ Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (wh
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
 web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en web/src/styles/win95.css)
-scripts/   services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
+scripts/   launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
 Dockerfile, docker-compose.yml, Makefile
 PRODUCT.md contexto de producto y diseño
 ```
