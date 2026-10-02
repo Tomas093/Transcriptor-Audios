@@ -49,7 +49,7 @@ make down    # lo apaga todo y libera la memoria
 
 ### Estilos (temporal)
 
-El botón **Estilos** (abajo a la derecha) abre un laboratorio para probar el aspecto en vivo: **9 estilos** (Calma, Bento, Neo-brutal, Terminal, Clay, Aurora, Editorial, Cuaderno, Grabadora) combinados con **3 estructuras** (Lateral, Flotante, Pestañas). Tu elección se recuerda; también se puede fijar por URL, por ejemplo `http://localhost:8080/?style=bento&layout=flotante`. Cuando elijas uno, se deja solo ese y se quita el laboratorio.
+El botón **Estilos** (abajo a la derecha) abre un laboratorio para probar el aspecto en vivo: Calma (el original), **Windows 95**, **Brutalismo** (crudo y hormigón), **Neo-brutalismo** (pop y oscuro) y **Bauhaus** (color y negro). Tu elección se recuerda; también se puede fijar por URL, por ejemplo `http://localhost:8080/?style=win95`. Cuando elijas uno, se deja solo ese y se quita el laboratorio.
 
 ### Sesiones
 
