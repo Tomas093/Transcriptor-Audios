@@ -46,6 +46,7 @@ Tus sesiones quedan en `~/TranscriptorAudios/sessions/<fecha>-<id>/`:
 |---|---|
 | `make status` | Estado de Whisper, Ollama y la app |
 | `make logs` | Logs de la app |
+| `make doctor` | Diagnóstico completo y **prueba real** (genera voz con `say`, la transcribe y resume, y mide tiempo/CPU/memoria) |
 | `make bench FILE=audio.opus` | Mide **tiempo, pico de CPU y memoria** procesando un audio tuyo |
 | `make purge` | Borra todas las sesiones (pide confirmación) |
 | `make test` | Tests del backend y compilación de la web |
@@ -103,6 +104,6 @@ Probado de punta a punta:
 
 **No se pudo verificar fuera de un Mac real:**
 
-- La aceleración con Metal, los **tiempos y el consumo reales** (usa `make bench FILE=audio.opus`) y la calidad de transcripción con `large-v3-turbo`.
+- La aceleración con Metal, los **tiempos y el consumo reales** (`make doctor` lo comprueba de una vez; `make bench FILE=audio.opus` mide con un audio tuyo) y la calidad de transcripción con `large-v3-turbo`.
 - El resumen con Ollama + `qwen2.5:7b` (se probó contra un servidor que imita su API `/api/chat`).
 - Que Homebrew instale el binario `whisper-server`. `make setup` lo comprueba y, si falta, te da los comandos para compilarlo (`WHISPER_BIN=…`).

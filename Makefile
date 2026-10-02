@@ -57,6 +57,9 @@ status: ## Estado de los servicios
 logs: ## Logs de la app (Ctrl+C para salir)
 	docker compose logs -f --tail=100 app
 
+doctor: ## Diagnóstico + prueba real con voz generada (pega la salida si algo falla)
+	./scripts/doctor.sh
+
 bench: ## Mide tiempo y consumo con un audio tuyo: make bench FILE=audio.opus
 	./scripts/bench.sh "$(FILE)"
 
@@ -75,4 +78,4 @@ dev: ## Desarrollo local sin Docker (API en :8080, web con recarga en :5173)
 	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:8080 go run .) & \
 	wait
 
-.PHONY: help setup up down status logs bench purge test dev
+.PHONY: help setup up down status logs doctor bench purge test dev
