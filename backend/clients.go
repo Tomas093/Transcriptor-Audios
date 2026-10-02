@@ -30,6 +30,47 @@ func friendly(service string, err error) error {
 	return fmt.Errorf("%s: %w", service, err)
 }
 
+// transient dice si un error de red merece reintento: conexión cortada o reiniciada (típico
+// del reenvío de puertos de Docker Desktop tras un rato de inactividad), no un timeout ni
+// una cancelación.
+func transient(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var ne *net.OpError
+	s := err.Error()
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &ne) ||
+		strings.Contains(s, "connection reset") || strings.Contains(s, "broken pipe") || strings.Contains(s, "EOF")
+}
+
+// doRetry ejecuta la petición hasta 3 veces si falla por un corte de red transitorio.
+// build debe crear una petición nueva en cada intento (el cuerpo no se puede reutilizar).
+func doRetry(ctx context.Context, hc *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+		}
+		req, err := build()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := hc.Do(req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !transient(err) {
+			break
+		}
+	}
+	return nil, lastErr
+}
+
 // ---------- Whisper (whisper.cpp server) ----------
 
 type Whisper struct {
@@ -206,12 +247,13 @@ func (o *Ollama) Chat(ctx context.Context, system, user string) (string, error) 
 		},
 		"options": map[string]any{"temperature": 0.2, "num_ctx": o.numCtx},
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.base+"/api/chat", bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := o.hc.Do(req)
+	resp, err := doRetry(ctx, o.hc, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.base+"/api/chat", bytes.NewReader(payload))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, err
+	})
 	if err != nil {
 		return "", friendly("Ollama", err)
 	}

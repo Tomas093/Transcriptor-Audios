@@ -70,6 +70,7 @@ type Session struct {
 	TitleAuto bool      `json:"titleAuto"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	Rev       int64     `json:"rev"` // sube en cada cambio; la web descarta estados más viejos que el que ya tiene
 	Items     []*Item   `json:"items"`
 	Global    Global    `json:"global"`
 }
@@ -81,6 +82,7 @@ type SessionInfo struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	ItemCount int       `json:"itemCount"`
 	Busy      bool      `json:"busy"`
+	Rev       int64     `json:"rev"`
 }
 
 func isBusyStatus(s string) bool {
@@ -105,7 +107,7 @@ func (s *Session) busy() bool {
 
 func (s *Session) info() SessionInfo {
 	return SessionInfo{ID: s.ID, Title: s.Title, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
-		ItemCount: len(s.Items), Busy: s.busy()}
+		ItemCount: len(s.Items), Busy: s.busy(), Rev: s.Rev}
 }
 
 func (s *Session) item(id string) *Item {
@@ -228,6 +230,7 @@ func (s *Store) Update(id string, fn func(*Session)) bool {
 	}
 	fn(sess)
 	sess.UpdatedAt = time.Now()
+	sess.Rev++
 	if err := s.persistLocked(sess); err != nil {
 		slog.Error("no se pudo guardar la sesión", "id", id, "err", err)
 	}

@@ -36,6 +36,7 @@ export interface Session {
   titleAuto: boolean;
   createdAt: string;
   updatedAt: string;
+  rev?: number;
   items: Item[];
   global: GlobalSummary;
 }
@@ -47,6 +48,7 @@ export interface SessionInfo {
   updatedAt: string;
   itemCount: number;
   busy: boolean;
+  rev?: number;
 }
 
 export interface Health {
@@ -69,5 +71,6 @@ export function infoOf(s: Session): SessionInfo {
     updatedAt: s.updatedAt,
     itemCount: s.items.length,
     busy: isBusy(s),
+    rev: s.rev,
   };
 }

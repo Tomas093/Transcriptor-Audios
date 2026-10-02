@@ -67,7 +67,7 @@ func loadConfig() Config {
 				"review, commit, deploy, backend, frontend, paper, quiz, homework, slides."),
 		OllamaURL:       env("OLLAMA_URL", "http://host.docker.internal:11434"),
 		OllamaModel:     env("OLLAMA_MODEL", "qwen2.5:7b"),
-		OllamaKeepAlive: env("OLLAMA_KEEP_ALIVE", "30s"),
+		OllamaKeepAlive: env("OLLAMA_KEEP_ALIVE", "60s"),
 		OllamaNumCtx:    envInt("OLLAMA_NUM_CTX", 12288),
 		RetentionDays:   envInt("RETENTION_DAYS", 7),
 		MaxUploadBytes:  int64(envInt("MAX_UPLOAD_MB", 1024)) << 20,

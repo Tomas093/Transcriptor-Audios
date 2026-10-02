@@ -290,7 +290,10 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	for i, it := range items {
 		ids[i] = it.ID
 	}
-	if !a.store.Update(id, func(s *Session) { s.Items = append(s.Items, items...) }) {
+	if !a.store.Update(id, func(s *Session) {
+		s.Items = append(s.Items, items...)
+		markGlobalPending(s)
+	}) {
 		cleanup()
 		_ = os.RemoveAll(a.store.sessionDir(id)) // la sesión se borró durante la subida
 		writeErr(w, http.StatusNotFound, "sesión no encontrada")
@@ -319,6 +322,9 @@ func (a *API) retryItem(w http.ResponseWriter, r *http.Request) {
 		case it.Status == StatusDone && it.SummaryError != "":
 			it.Status, it.SummaryError, retryable = StatusTranscribed, "", true
 		}
+		if retryable {
+			markGlobalPending(s)
+		}
 	})
 	switch {
 	case !found:
@@ -336,7 +342,7 @@ func (a *API) retryItem(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) retryGlobal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !a.store.Update(id, func(s *Session) { s.Global.Hash = "" }) {
+	if !a.store.Update(id, func(s *Session) { s.Global.Hash = ""; markGlobalPending(s) }) {
 		writeErr(w, http.StatusNotFound, "sesión no encontrada")
 		return
 	}

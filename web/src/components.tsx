@@ -308,6 +308,10 @@ export function ItemBlock({ item, index, onRetry }: { item: Item; index: number;
         </div>
       ) : null}
 
+      {hasText && item.summarySkipped ? (
+        <p className="short-note">Audio corto: se lee de un vistazo, no necesita resumen.</p>
+      ) : null}
+
       {hasText && !item.summarySkipped ? (
         <SummaryBlock
           label="Resumen"

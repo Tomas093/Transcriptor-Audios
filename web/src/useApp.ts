@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { looksLikeAudio } from "./format";
-import { infoOf, type Health, type Session, type SessionInfo } from "./types";
+import { infoOf, isBusy, type Health, type Session, type SessionInfo } from "./types";
 
 function readRoute(): string | null {
   const m = location.hash.match(/^#\/s\/([\w-]+)$/);
@@ -32,9 +32,13 @@ export function useApp() {
     noticeTimer.current = window.setTimeout(() => setNotice(null), 6000);
   }, []);
 
+  // Un estado más viejo (p. ej. la respuesta de una subida que llega tarde) nunca pisa a uno más nuevo.
   const upsert = useCallback((s: Session) => {
-    setSessions((prev) => ({ ...prev, [s.id]: s }));
-    setList((prev) => [infoOf(s), ...prev.filter((x) => x.id !== s.id)].sort(byRecent));
+    const newer = (cur?: { rev?: number }) => cur !== undefined && (cur.rev ?? 0) > (s.rev ?? 0);
+    setSessions((prev) => (newer(prev[s.id]) ? prev : { ...prev, [s.id]: s }));
+    setList((prev) =>
+      newer(prev.find((x) => x.id === s.id)) ? prev : [infoOf(s), ...prev.filter((x) => x.id !== s.id)].sort(byRecent),
+    );
   }, []);
 
   const drop = useCallback((id: string) => {
@@ -118,6 +122,18 @@ export function useApp() {
       alive = false;
     };
   }, [activeId, hasActive, upsert, say]);
+
+  // Red de seguridad: mientras la sesión abierta tenga trabajo en curso, se vuelve a pedir su
+  // estado cada pocos segundos por si se perdió algún evento en directo.
+  const activeBusy = activeId && sessions[activeId] ? isBusy(sessions[activeId]) : false;
+  useEffect(() => {
+    if (!activeId || !activeBusy) return;
+    const t = window.setInterval(() => {
+      if (document.hidden) return;
+      api.get(activeId).then(upsert).catch(() => {});
+    }, 4000);
+    return () => window.clearInterval(t);
+  }, [activeId, activeBusy, upsert]);
 
   // Si se borra la sesión abierta (p. ej. por caducidad), volver al inicio
   useEffect(() => {

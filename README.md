@@ -56,9 +56,9 @@ Tus sesiones quedan en `~/TranscriptorAudios/sessions/<fecha>-<id>/`:
 
 Lo que ya hace el proyecto por defecto:
 
-- **Un solo modelo a la vez**: primero se transcriben todos los audios de la tanda y después se resumen, sin alternar entre Whisper y el LLM.
+- **Un solo trabajo de IA a la vez**: cada audio se transcribe y se resume enseguida, uno tras otro, así el texto y el resumen van apareciendo en orden.
 - **Cola secuencial**, nunca en paralelo.
-- Whisper corre con **prioridad baja** (`nice`) y 4 hilos; Ollama descarga el modelo de la RAM **30 s después** de resumir.
+- Whisper corre con **prioridad baja** (`nice`) y 4 hilos; Ollama descarga el modelo de la RAM **60 s después** de resumir.
 - Audios muy cortos (< 20 palabras) no se resumen: no hace falta gastar el LLM.
 - El resumen general se recalcula solo si cambió el contenido.
 
@@ -73,7 +73,7 @@ make up OLLAMA_MODEL=qwen2.5:3b      # resumen más ligero (peor calidad)
 
 Variables que acepta `make` (y el `docker-compose.yml`): `PORT` (8080), `DATA_PATH` (`~/TranscriptorAudios`), `OLLAMA_MODEL` (`qwen2.5:7b`), `WHISPER_THREADS` (4), `RETENTION_DAYS` (7; `0` desactiva el borrado automático).
 
-Variables del backend (avanzado): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`30s`), `OLLAMA_NUM_CTX` (12288), `MAX_UPLOAD_MB` (1024), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; rechaza otras cabeceras `Host` para evitar ataques de DNS rebinding).
+Variables del backend (avanzado): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (12288), `MAX_UPLOAD_MB` (1024), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; rechaza otras cabeceras `Host` para evitar ataques de DNS rebinding).
 
 **Spanglish:** Whisper se fuerza a español con un prompt inicial que incluye términos en inglés frecuentes (*deadline, meeting, commit…*). Con detección automática de idioma, un audio con mezcla podría cambiar a inglés a mitad de frase. Si tus audios usan otros términos recurrentes, añádelos en `WHISPER_PROMPT`.
 

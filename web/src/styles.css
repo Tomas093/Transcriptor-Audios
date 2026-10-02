@@ -724,6 +724,12 @@ code {
   color: var(--primary-ink);
 }
 
+.short-note {
+  margin-top: 12px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
 .pending-label {
   margin-bottom: 8px;
   font-size: var(--fs-sm);

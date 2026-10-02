@@ -31,9 +31,9 @@ type batch struct {
 	items   []string
 }
 
-// Worker procesa las tandas de audios de una en una. Primero transcribe todos los audios
-// de la tanda y después los resume, para no alternar entre Whisper y el LLM (así solo hay
-// un modelo trabajando a la vez y el Mac no se carga de más).
+// Worker procesa las tandas de audios de una en una, y dentro de cada tanda un audio tras
+// otro (transcribe y resume cada uno enseguida, así el texto y el resumen van apareciendo
+// en orden). Nunca hay dos trabajos de IA a la vez, así el Mac no se carga de más.
 type Worker struct {
 	store   *Store
 	whisper *Whisper
@@ -72,8 +72,6 @@ func (w *Worker) process(ctx context.Context, b batch) {
 	start := time.Now()
 	for _, id := range b.items {
 		w.transcribe(ctx, b.session, id)
-	}
-	for _, id := range b.items {
 		w.summarizeItem(ctx, b.session, id)
 	}
 	w.summarizeGlobal(ctx, b.session)
@@ -261,7 +259,7 @@ func (w *Worker) summarizeGlobal(ctx context.Context, sessionID string) {
 	}
 	if in.count < 2 {
 		if prev.Status != GlobalIdle {
-			w.store.Update(sessionID, func(sess *Session) { sess.Global = Global{Status: GlobalIdle} })
+			w.store.Update(sessionID, func(sess *Session) { settleGlobal(sess, Global{Status: GlobalIdle}) })
 		}
 		return
 	}
@@ -281,11 +279,40 @@ func (w *Worker) summarizeGlobal(ctx context.Context, sessionID string) {
 	if err != nil {
 		slog.Warn("falló el resumen general", "session", sessionID, "err", err)
 		w.store.Update(sessionID, func(sess *Session) {
-			sess.Global = Global{Status: GlobalError, Error: err.Error(), Items: in.count}
+			settleGlobal(sess, Global{Status: GlobalError, Error: err.Error(), Items: in.count})
 		})
 		return
 	}
 	w.store.Update(sessionID, func(sess *Session) {
-		sess.Global = Global{Status: GlobalDone, Text: text, Hash: in.hash, Items: in.count}
+		settleGlobal(sess, Global{Status: GlobalDone, Text: text, Hash: in.hash, Items: in.count})
 	})
+}
+
+// markGlobalPending deja el resumen general como "en curso" desde el momento en que se
+// encola trabajo, para que la sesión no figure como terminada en el hueco entre el último
+// audio y el resumen general (si al final hay menos de 2 audios con texto, vuelve a "idle").
+func markGlobalPending(s *Session) {
+	if len(s.Items) < 2 {
+		return
+	}
+	s.Global.Status = GlobalWorking
+	if s.Global.Items == 0 {
+		s.Global.Items = len(s.Items)
+	}
+}
+
+// settleGlobal guarda el resultado del resumen general sin pisar trabajo que sigue en cola:
+// si mientras se calculaba llegaron audios nuevos (otra subida), la sesión sigue "en curso" y
+// el resumen general se recalculará al terminar esa tanda; así nunca figura como terminada
+// con un resumen general desactualizado.
+func settleGlobal(sess *Session, g Global) {
+	if len(sess.Items) >= 2 && g.Status != GlobalWorking {
+		for _, it := range sess.Items {
+			if isBusyStatus(it.Status) {
+				g.Status = GlobalWorking
+				break
+			}
+		}
+	}
+	sess.Global = g
 }

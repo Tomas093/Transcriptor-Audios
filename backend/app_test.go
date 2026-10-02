@@ -222,6 +222,12 @@ func TestPipelineMultipleAudios(t *testing.T) {
 	e.upload(t, sess.ID, map[string]string{
 		"PTT-20261002-WA0010.opus": a, "PTT-20261002-WA0002.opus": a, "PTT-20261002-WA0001.opus": a,
 	})
+	// Nada más subir, la sesión ya está ocupada y el resumen general figura en curso.
+	e.store.Read(sess.ID, func(s *Session) {
+		if !s.busy() || s.Global.Status != GlobalWorking {
+			t.Errorf("tras subir debe estar ocupada con el resumen general pendiente: busy=%v global=%s", s.busy(), s.Global.Status)
+		}
+	})
 	s := e.wait(t, sess.ID, allSettled)
 
 	if len(s.Items) != 3 {
@@ -549,5 +555,37 @@ func TestConcurrentUploadsAllSummarized(t *testing.T) {
 	}
 	if got := maxInflight.Load(); got != 1 {
 		t.Errorf("el modelo recibió %d peticiones simultáneas, debe ser 1", got)
+	}
+}
+
+// Un corte de conexión a mitad de la petición (típico tras un rato inactivo) se reintenta.
+func TestOllamaRetriesTransientDisconnect(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close() // corta sin responder
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"message": map[string]string{"content": "ok"}})
+	}))
+	defer srv.Close()
+	o := NewOllama(Config{OllamaURL: srv.URL, OllamaModel: "m", OllamaKeepAlive: "60s", OllamaNumCtx: 4096})
+	got, err := o.Chat(context.Background(), "sys", "user")
+	if err != nil || got != "ok" || calls.Load() != 2 {
+		t.Fatalf("got=%q err=%v calls=%d", got, err, calls.Load())
+	}
+}
+
+func TestRevIncreases(t *testing.T) {
+	st, _ := NewStore(t.TempDir(), NewHub())
+	s := st.Create("x")
+	var a, b int64
+	st.Update(s.ID, func(s *Session) {})
+	st.Read(s.ID, func(s *Session) { a = s.Rev })
+	st.Update(s.ID, func(s *Session) {})
+	st.Read(s.ID, func(s *Session) { b = s.Rev })
+	if a < 1 || b != a+1 {
+		t.Fatalf("rev %d → %d", a, b)
 	}
 }
