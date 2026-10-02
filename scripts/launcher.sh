@@ -16,8 +16,20 @@ case "${1:-}" in
   estado)
     if curl -fs -m 2 -o /dev/null "http://localhost:$PORT/api/health"; then echo on; else echo off; fi ;;
   up)
-    "$ROOT/scripts/boot.sh" >>"$LOG_DIR/launcher.log" 2>&1 || exit 1
-    open "http://localhost:$PORT" ;;
+    echo "=== $(date '+%F %T') up (PORT=$PORT) ===" >>"$LOG_DIR/launcher.log"
+    if ! "$ROOT/scripts/boot.sh" >>"$LOG_DIR/launcher.log" 2>&1; then
+      echo "Falló el arranque. Últimas líneas del registro:" >&2
+      tail -n 12 "$LOG_DIR/launcher.log" >&2
+      exit 1
+    fi
+    # make up puede volver antes de que la app responda: espera hasta 90 s
+    for _ in $(seq 1 45); do
+      curl -fs -m 2 -o /dev/null "http://localhost:$PORT/api/health" && { open "http://localhost:$PORT"; exit 0; }
+      sleep 2
+    done
+    echo "La app no responde en el puerto $PORT. Últimas líneas del registro:" >&2
+    { docker ps -a --format '{{.Names}}: {{.Status}} {{.Ports}}'; tail -n 8 "$LOG_DIR/launcher.log"; } >&2
+    exit 1 ;;
   down)
     cd "$ROOT" && make down >>"$LOG_DIR/launcher.log" 2>&1 ;;
   *) echo "uso: $0 {estado|up|down}" >&2; exit 2 ;;

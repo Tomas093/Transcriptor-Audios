@@ -34,8 +34,8 @@ else
   display notification "Encendiendo… tarda unos segundos (la primera vez, más)." with title "Transcriptor"
   try
     do shell script prefix & quoted form of launcher & " up"
-  on error
-    display dialog "No pude encenderlo. Revisa que Docker Desktop esté instalado. Detalles en ~/.transcriptor/launcher.log" buttons {"OK"} default button "OK" with icon caution with title "Transcriptor"
+  on error msg
+    display dialog "No pude encenderlo." & return & return & msg & return & return & "Registro completo: ~/.transcriptor/launcher.log" buttons {"OK"} default button "OK" with icon caution with title "Transcriptor"
   end try
 end if
 APPLESCRIPT
