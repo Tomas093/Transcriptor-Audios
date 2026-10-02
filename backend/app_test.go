@@ -122,7 +122,7 @@ func newEnv(t *testing.T) *testEnv {
 	os.WriteFile(filepath.Join(web, "index.html"), []byte("<html>app</html>"), 0o644)
 	cfg := Config{DataDir: dir, TmpDir: filepath.Join(dir, "tmp"), WebDir: web, WhisperURL: f.whisper.URL, WhisperLang: "es", WhisperPrompt: "x",
 		OllamaURL: f.ollama.URL, OllamaModel: "qwen2.5:7b", OllamaKeepAlive: "30s", OllamaNumCtx: 8192,
-		RetentionDays: 7, MaxUploadBytes: 64 << 20}
+		RetentionDays: 7, MaxUploadBytes: 64 << 20, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"}}
 	hub := NewHub()
 	store, err := NewStore(dir, hub)
 	if err != nil {
@@ -465,5 +465,27 @@ func TestWaveformIsJSONArray(t *testing.T) {
 	raw, _ := json.Marshal(Item{Wave: []int{0, 50, 100}})
 	if !strings.Contains(string(raw), `"wave":[0,50,100]`) {
 		t.Fatalf("la forma de onda debe serializarse como array JSON: %s", raw)
+	}
+}
+
+func TestDNSRebindingIsBlocked(t *testing.T) {
+	e := newEnv(t)
+	for host, want := range map[string]int{
+		"evil.example.com":      403,
+		"evil.example.com:8080": 403,
+		"localhost:8080":        200,
+		"127.0.0.1:9":           200,
+		"[::1]:8080":            200,
+	} {
+		req, _ := http.NewRequest("GET", e.srv.URL+"/api/sessions", nil)
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("Host %q → %d, quería %d", host, resp.StatusCode, want)
+		}
 	}
 }

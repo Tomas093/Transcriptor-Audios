@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,7 @@ type Config struct {
 	OllamaNumCtx    int
 	RetentionDays   int
 	MaxUploadBytes  int64
+	AllowedHosts    []string
 }
 
 func env(key, def string) string {
@@ -29,6 +31,16 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envInt(key string, def int) int {
@@ -59,6 +71,7 @@ func loadConfig() Config {
 		OllamaNumCtx:    envInt("OLLAMA_NUM_CTX", 12288),
 		RetentionDays:   envInt("RETENTION_DAYS", 7),
 		MaxUploadBytes:  int64(envInt("MAX_UPLOAD_MB", 1024)) << 20,
+		AllowedHosts:    splitList(env("ALLOWED_HOSTS", "localhost,127.0.0.1,::1")),
 	}
 }
 

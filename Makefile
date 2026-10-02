@@ -35,6 +35,7 @@ setup: ## Instala y descarga todo lo necesario (una sola vez)
 	@echo; echo "Listo. Arranca con: make up"
 
 up: ## Levanta todo (Whisper + Ollama nativos y la app en Docker)
+	mkdir -p "$(DATA_PATH)"
 	./scripts/services.sh start
 	docker compose up -d --build
 	@echo; echo "Transcriptor listo en http://localhost:$(PORT)   (tus sesiones: $(DATA_PATH))"

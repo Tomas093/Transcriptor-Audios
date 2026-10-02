@@ -72,7 +72,7 @@ make up OLLAMA_MODEL=qwen2.5:3b      # resumen más ligero (peor calidad)
 
 Variables que acepta `make` (y el `docker-compose.yml`): `PORT` (8080), `DATA_PATH` (`~/TranscriptorAudios`), `OLLAMA_MODEL` (`qwen2.5:7b`), `WHISPER_THREADS` (4), `RETENTION_DAYS` (7; `0` desactiva el borrado automático).
 
-Variables del backend (avanzado): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`30s`), `OLLAMA_NUM_CTX` (12288), `MAX_UPLOAD_MB` (1024).
+Variables del backend (avanzado): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`30s`), `OLLAMA_NUM_CTX` (12288), `MAX_UPLOAD_MB` (1024), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; rechaza otras cabeceras `Host` para evitar ataques de DNS rebinding).
 
 **Spanglish:** Whisper se fuerza a español con un prompt inicial que incluye términos en inglés frecuentes (*deadline, meeting, commit…*). Con detección automática de idioma, un audio con mezcla podría cambiar a inglés a mitad de frase. Si tus audios usan otros términos recurrentes, añádelos en `WHISPER_PROMPT`.
 

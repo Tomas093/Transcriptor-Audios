@@ -272,9 +272,9 @@ export function ItemBlock({ item, index, onRetry }: { item: Item; index: number;
       <header className="item-head">
         <Waveform wave={item.wave} active={working} />
         <div className="item-id">
-          <h3 id={`item-${item.id}`} className="item-name" title={item.name}>
+          <h2 id={`item-${item.id}`} className="item-name" title={item.name}>
             {item.name}
-          </h3>
+          </h2>
           <p className="item-sub">
             <span className="item-index">Audio {index}</span>
             {item.durationSec ? ` · ${fmtDuration(item.durationSec)}` : ""} · {fmtWhen(item.addedAt)}

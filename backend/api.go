@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,13 +41,31 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{id}/items/{item}/retry", a.retryItem)
 	mux.HandleFunc("POST /api/sessions/{id}/global/retry", a.retryGlobal)
 	mux.Handle("/", spa(a.cfg.WebDir))
-	return secure(mux)
+	return secure(mux, a.cfg.AllowedHosts)
 }
 
-// secure añade cabeceras de seguridad y rechaza peticiones que cambian estado y vienen de
-// otro origen (protege de que una web cualquiera haga POST/DELETE a localhost).
-func secure(next http.Handler) http.Handler {
+// hostName devuelve el host de una cabecera Host sin el puerto ("localhost:8080" → "localhost").
+func hostName(hostport string) string {
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return strings.Trim(hostport, "[]")
+}
+
+// secure añade cabeceras de seguridad y dos defensas para una app que escucha en localhost:
+//   - Host permitido: evita el DNS rebinding (una web ajena que apunta su dominio a 127.0.0.1
+//     y así leería tus transcripciones como si fuera "su mismo origen").
+//   - Origin igual al Host en peticiones que cambian estado: evita POST/DELETE desde otras webs.
+func secure(next http.Handler, allowedHosts []string) http.Handler {
+	allowed := map[string]bool{}
+	for _, h := range allowedHosts {
+		allowed[strings.ToLower(h)] = true
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(allowed) > 0 && !allowed[strings.ToLower(hostName(r.Host))] {
+			writeErr(w, http.StatusForbidden, "host no permitido")
+			return
+		}
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
@@ -273,6 +292,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.store.Update(id, func(s *Session) { s.Items = append(s.Items, items...) }) {
 		cleanup()
+		_ = os.RemoveAll(a.store.sessionDir(id)) // la sesión se borró durante la subida
 		writeErr(w, http.StatusNotFound, "sesión no encontrada")
 		return
 	}
