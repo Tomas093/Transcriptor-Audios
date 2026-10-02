@@ -14,7 +14,7 @@ Transcribir de forma local (sin enviar nada a la nube y sin coste) los audios de
 
 ## Brand Personality
 
-Tranquila, enfocada y rápida. La voz es breve y directa, en español, sin jerga técnica ni entusiasmo forzado. Debe sentirse como una herramienta de lectura bien hecha: la calma de la interfaz de Claude Code (barra de sesiones, hilo de mensajes) con un toque propio e innovador en los detalles, que quede cuidada y con identidad sin recargar. El objetivo emocional es confianza y alivio: "ya lo tengo, léelo".
+Tranquila, enfocada y rápida, con estética Windows 95 (escritorio turquesa, ventanas grises con bisel y barras de título azul marino; cada audio es una ventana). La voz es breve y directa, en español, sin jerga técnica ni entusiasmo forzado. Debe sentirse como una herramienta de lectura bien hecha: la calma de la interfaz de Claude Code (barra de sesiones, hilo de mensajes) con un toque propio e innovador en los detalles, que quede cuidada y con identidad sin recargar. El objetivo emocional es confianza y alivio: "ya lo tengo, léelo".
 
 ## Anti-references
 

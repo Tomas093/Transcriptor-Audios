@@ -2,9 +2,7 @@ import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
-import "./styles/lab.css";
-import "./styles/skins.css";
-import { applyStyle, currentStyle } from "./theme";
+import "./styles/win95.css";
 
 class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -28,7 +26,6 @@ class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   }
 }
 
-applyStyle(currentStyle()); // antes del primer render, para evitar parpadeo
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

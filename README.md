@@ -44,12 +44,8 @@ make down    # lo apaga todo y libera la memoria
 
 1. **Guarda los audios desde WhatsApp.** En WhatsApp de escritorio: clic derecho sobre el audio → *Guardar como…* (te queda un `.opus`).
 2. **Arrástralos a la ventana** (o pulsa el botón de subida). Puedes soltar varios a la vez; se ordenan por nombre, que en WhatsApp sigue la fecha.
-3. **Lee.** El texto y el resumen de cada audio van apareciendo en orden. Si subiste varios, arriba aparece el **resumen general**.
+3. **Lee.** Cada audio aparece como una ventana, con su texto y su resumen, en orden. Si subiste varios, arriba aparece el **resumen general**.
 4. Usa **Copiar texto / Copiar resumen / Copiar todo** o **Descargar** (Markdown) para llevarte lo que necesites.
-
-### Estilos (temporal)
-
-El botón **Estilos** (abajo a la derecha) abre un laboratorio para probar el aspecto en vivo: Calma (el original), **Windows 95**, **Brutalismo** (crudo y hormigón), **Neo-brutalismo** (pop y oscuro) y **Bauhaus** (color y negro). Tu elección se recuerda; también se puede fijar por URL, por ejemplo `http://localhost:8080/?style=win95`. Cuando elijas uno, se deja solo ese y se quita el laboratorio.
 
 ### Sesiones
 
@@ -156,7 +152,7 @@ Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (wh
 
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
-web/       React + Vite + TypeScript (CSS propio; sigue el tema claro/oscuro del sistema)
+web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en web/src/styles/win95.css)
 scripts/   services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
 Dockerfile, docker-compose.yml, Makefile
 PRODUCT.md contexto de producto y diseño
@@ -165,5 +161,5 @@ PRODUCT.md contexto de producto y diseño
 ## Estado de verificación
 
 - **Probado en un Mac real** (Apple M4 Max, 36 GB): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
-- **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (claro, oscuro, móvil, errores) con auditoría de accesibilidad sin violaciones.
+- **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (escritorio, móvil, errores) con auditoría de accesibilidad sin violaciones.
 - **Sin medir objetivamente:** la temperatura sostenida con audios muy largos. Para eso está `make stress`.
