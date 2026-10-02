@@ -38,6 +38,18 @@ func TestNaturalLess(t *testing.T) {
 	}
 }
 
+func TestCleanTranscriptDropsSilenceHallucinations(t *testing.T) {
+	for _, in := range []string{"Subtítulos realizados por la comunidad de Amara.org", " Gracias por ver el video. ", "¡Suscríbete!", "[BLANK_AUDIO]"} {
+		if got := cleanTranscript(in); got != "" {
+			t.Errorf("%q debería descartarse, quedó %q", in, got)
+		}
+	}
+	// Dentro de una frase real no se toca.
+	if got := cleanTranscript("Gracias por ver el video que me mandaste, está buenísimo"); got == "" {
+		t.Errorf("no debe descartar texto real")
+	}
+}
+
 func TestCleanTranscript(t *testing.T) {
 	got := cleanTranscript(" Hola\n  mundo [BLANK_AUDIO] (música) ok ")
 	if got != "Hola mundo ok" {
@@ -104,10 +116,11 @@ func newFakes(t *testing.T) *fakes {
 }
 
 type testEnv struct {
-	srv   *httptest.Server
-	store *Store
-	cfg   Config
-	f     *fakes
+	srv    *httptest.Server
+	store  *Store
+	cfg    Config
+	f      *fakes
+	cancel context.CancelFunc
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -135,7 +148,7 @@ func newEnv(t *testing.T) *testEnv {
 	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg)}
 	srv := httptest.NewServer(api.Handler())
 	t.Cleanup(srv.Close)
-	return &testEnv{srv: srv, store: store, cfg: cfg, f: f}
+	return &testEnv{srv: srv, store: store, cfg: cfg, f: f, cancel: cancel}
 }
 
 func makeAudio(t *testing.T, dir, name string) string {
@@ -697,5 +710,49 @@ func TestReuploadFailedAudioRetries(t *testing.T) {
 	s = e.wait(t, sess.ID, func(s *Session) bool { return allSettled(s) && s.Items[0].Status == StatusDone })
 	if len(s.Items) != 1 || s.Items[0].Text == "" {
 		t.Errorf("%+v", s.Items)
+	}
+}
+
+// Si se apaga la app a mitad de un audio, no queda marcado como error: se reanuda al volver a arrancar.
+func TestShutdownMidAudioResumes(t *testing.T) {
+	e := newEnv(t)
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	defer slow.Close()
+	// El worker de este entorno usa e.f.whisper; lo cerramos y apuntamos a uno lento levantando otro entorno.
+	e2dir := t.TempDir()
+	cfg := e.cfg
+	cfg.DataDir, cfg.TmpDir, cfg.WhisperURL = e2dir, filepath.Join(e2dir, "tmp"), slow.URL
+	hub := NewHub()
+	store, _ := NewStore(e2dir, hub)
+	worker := NewWorker(store, NewWhisper(cfg), NewOllama(cfg), cfg.TmpDir)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { worker.Run(ctx); close(done) }()
+	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg)}
+	srv := httptest.NewServer(api.Handler())
+	defer srv.Close()
+	e2 := &testEnv{srv: srv, store: store, cfg: cfg, f: e.f, cancel: cancel}
+
+	a := makeAudio(t, t.TempDir(), "a.wav")
+	sess := e2.createSession(t)
+	e2.upload(t, sess.ID, map[string]string{"x.opus": a})
+	e2.wait(t, sess.ID, func(s *Session) bool { return s.Items[0].Status == StatusTranscribing })
+	cancel() // "make down" a mitad de la transcripción
+	<-done
+	time.Sleep(100 * time.Millisecond)
+	store.Read(sess.ID, func(s *Session) {
+		if s.Items[0].Status == StatusError {
+			t.Errorf("un apagado no debe dejar el audio en error: %+v", s.Items[0])
+		}
+	})
+	// Al volver a arrancar, el audio vuelve a la cola.
+	st2, _ := NewStore(e2dir, NewHub())
+	if got := st2.Pending()[sess.ID]; len(got) != 1 {
+		t.Errorf("el audio debe quedar pendiente tras reiniciar: %v", got)
 	}
 }

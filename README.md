@@ -1,109 +1,163 @@
 # Transcriptor de audios
 
-Transcribe los audios de WhatsApp a texto, **todo en tu Mac y sin gastar nada**, para poder leerlos cuando no puedes escucharlos (en clase, por ejemplo). Soporta español y spanglish.
+Convierte los audios de WhatsApp en **texto y resúmenes**, para poder leerlos cuando no puedes escucharlos (por ejemplo, en clase).
+Funciona **100 % en tu Mac, sin internet y sin gastar nada**: ningún audio sale de tu equipo.
 
-- **Texto de cada audio** + **resumen de cada audio** + **resumen general** de todos los audios de la sesión, como si fueran una sola conversación.
-- Subes varios audios a la vez: se ordenan por nombre (WhatsApp los numera por fecha) y se procesan de uno en uno.
-- Sesiones tipo chat, con barra lateral. Cada sesión es una carpeta en tu disco.
-- Borrado manual (botón *Eliminar*) y **borrado automático a los 7 días** sin actividad.
-- Nada sale de tu equipo: Whisper y el modelo de resumen corren en local.
+Qué obtienes al soltar uno o varios audios:
 
-## Arquitectura
+- El **texto** de cada audio (español y *spanglish*).
+- Un **resumen de cada audio**.
+- Un **resumen general** de todos los audios de la sesión, como si fueran una sola conversación.
 
-```
-Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (whisper.cpp, Metal)   ← nativo
-                              │                      └──► Ollama + qwen2.5:7b (Metal)    ← nativo
-                              └──► ~/TranscriptorAudios  (sesiones: audios, textos, resúmenes)
-```
+---
 
-- **¿Por qué Whisper y Ollama fuera de Docker?** Docker en macOS corre en una máquina virtual Linux que **no puede usar la GPU de Apple**. Nativos usan Metal: son varias veces más rápidos y calientan mucho menos que en CPU dentro de un contenedor.
-- **¿Por qué Go y no Rust?** El trabajo pesado lo hacen `whisper.cpp` y Ollama (C/C++). La app solo orquesta: Go da un binario estático, unos pocos MB de RAM en reposo y una cola simple. Rust no daría una ventaja medible aquí.
-- El contenedor corre con el sistema de ficheros en solo lectura, sin privilegios, límite de 512 MB y 1 CPU, y solo es accesible desde tu Mac (`127.0.0.1`).
+## 1. Instalación (una sola vez)
 
-## Requisitos
+**Necesitas:** un Mac con chip Apple Silicon (M1 o posterior), unos 7 GB libres en disco y estas dos aplicaciones instaladas:
 
-- Mac con Apple Silicon, [Homebrew](https://brew.sh) y [Docker Desktop](https://www.docker.com/products/docker-desktop).
-- ~7 GB de disco (modelo de Whisper ~570 MB + `qwen2.5:7b` ~4,7 GB + imagen).
+- [Homebrew](https://brew.sh)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop), **abierto** (ícono de la ballena en la barra superior).
 
-## Uso
+Abre la **Terminal** y ejecuta:
 
 ```bash
-make setup   # una sola vez: instala whisper-cpp y ollama, descarga los modelos
-make up      # levanta todo y abre http://localhost:8080
-make down    # lo baja todo y libera la memoria
+git clone https://github.com/Tomas093/Transcriptor-Audios.git
+cd Transcriptor-Audios
+git checkout claude/exciting-knuth-1qnu23    # la rama con la versión final
+make setup
 ```
 
-1. En WhatsApp, guarda los audios (en la versión de escritorio: clic derecho sobre el audio → *Guardar como…*).
-2. Arrástralos a la ventana (o pulsa el botón). Puedes añadir más audios a la misma sesión más tarde. Si subes un audio que ya estaba (mismo contenido), se deja el ya procesado sin tocar; si subes uno con el mismo nombre pero contenido distinto, reemplaza al anterior en su sitio y se vuelve a procesar.
-3. Lee el texto y el resumen. *Copiar todo* o *Descargar* (Markdown) para llevártelo.
+`make setup` instala Whisper y Ollama, y descarga los modelos (~5 GB). Tarda un rato la primera vez. Si Homebrew no instala `whisper-server`, el propio comando te dice cómo compilarlo.
 
-Tus sesiones quedan en `~/TranscriptorAudios/sessions/<fecha>-<id>/`:
-`audio/` (originales), `texto/` (un `.txt` por audio con su resumen) y `resumen-general.txt`.
+## 2. Uso diario
 
-### Otros comandos
+Desde la carpeta del proyecto, en la Terminal:
+
+```bash
+make up      # levanta todo y abre http://localhost:8080
+make down    # lo apaga todo y libera la memoria
+```
+
+> La primera vez que arranca, Metal (la GPU del Mac) tarda unos 15 s en preparar sus kernels. Es normal.
+
+**Paso a paso:**
+
+1. **Guarda los audios desde WhatsApp.** En WhatsApp de escritorio: clic derecho sobre el audio → *Guardar como…* (te queda un `.opus`).
+2. **Arrástralos a la ventana** (o pulsa el botón de subida). Puedes soltar varios a la vez; se ordenan por nombre, que en WhatsApp sigue la fecha.
+3. **Lee.** El texto y el resumen de cada audio van apareciendo en orden. Si subiste varios, arriba aparece el **resumen general**.
+4. Usa **Copiar texto / Copiar resumen / Copiar todo** o **Descargar** (Markdown) para llevarte lo que necesites.
+
+### Sesiones
+
+La barra lateral lista tus sesiones, como un chat. Cada vez que sueltas audios en "Nueva sesión" se crea una; puedes **seguir añadiendo audios** a una sesión existente.
+
+- **Renombrar:** haz clic en el título de arriba.
+- **Eliminar:** botón *Eliminar* (te pide confirmar). Borra la sesión y sus audios del disco.
+- **Borrado automático:** las sesiones se borran solas a los **7 días sin actividad**. La barra lateral avisa cuando a una le quedan 2 días o menos.
+
+### Audios repetidos
+
+- Si subes **el mismo audio** (mismo contenido, aunque cambie el nombre), se deja el que ya estaba procesado: no se duplica ni se vuelve a procesar.
+- Si subes uno con **el mismo nombre pero otro contenido**, reemplaza al anterior en su sitio y se procesa de nuevo.
+- Un audio que había fallado y subes otra vez, se reintenta.
+
+### Dónde quedan tus archivos
+
+En `~/TranscriptorAudios/sessions/<fecha>-<id>/` (puedes verlo desde el Finder):
+
+```
+audio/                 los audios originales
+texto/                 un .txt por audio: transcripción + resumen
+resumen-general.txt    el resumen de toda la sesión
+```
+
+---
+
+## 3. Si algo falla
+
+| Qué ves | Qué hacer |
+|---|---|
+| Aviso amarillo "Whisper no responde" u "Ollama no responde" | Ejecuta `make up` |
+| "falta el modelo qwen2.5:7b" | `ollama pull qwen2.5:7b` |
+| Un audio quedó en error | Botón **Reintentar** en ese audio. Si solo falló el resumen, el texto no se pierde |
+| Un audio no muestra resumen | Si tiene menos de ~20 palabras se omite a propósito (se lee de un vistazo) |
+| La app no abre | Comprueba que Docker Desktop esté abierto y ejecuta `make status` |
+| No sabes qué pasa | `make doctor` hace un diagnóstico completo y una prueba real; pega su salida si necesitas ayuda |
+
+Registros: `make logs` (la app) y `~/.transcriptor/whisper.log`, `~/.transcriptor/ollama.log` (Whisper y Ollama).
+
+## 4. Comandos
 
 | Comando | Qué hace |
 |---|---|
+| `make setup` | Instala y descarga todo lo necesario (una vez) |
+| `make up` / `make down` | Levanta / apaga todo |
 | `make status` | Estado de Whisper, Ollama y la app |
-| `make logs` | Logs de la app |
-| `make doctor` | Diagnóstico completo y **prueba real** (genera voz con `say`, la transcribe y resume, y mide tiempo/CPU/memoria) |
-| `make bench FILE=audio.opus` | Mide **tiempo, pico de CPU y memoria** procesando un audio tuyo |
+| `make logs` | Registros de la app (Ctrl+C para salir) |
+| `make doctor` | Diagnóstico + prueba real con voz generada: transcripción, resúmenes, **3 subidas simultáneas**, detección de audios repetidos y rendimiento |
+| `make stress` | Procesa ~4 min de voz y mide CPU, memoria y **si macOS limita la CPU por calor** (`pmset`, sin sudo) |
+| `make bench FILE=audio.opus` | Mide tiempo, CPU y memoria con un audio tuyo |
 | `make purge` | Borra todas las sesiones (pide confirmación) |
 | `make test` | Tests del backend y compilación de la web |
-| `make dev` | Desarrollo sin Docker (API :8080, web con recarga :5173) |
+| `make dev` | Desarrollo sin Docker (API en :8080, web con recarga en :5173) |
 
-## Que no se caliente el Mac
+## 5. Que el Mac no se caliente
 
-Lo que ya hace el proyecto por defecto:
+Por defecto ya hace esto:
 
-- **Un solo trabajo de IA a la vez**: cada audio se transcribe y se resume enseguida, uno tras otro, así el texto y el resumen van apareciendo en orden.
-- **Cola secuencial**, nunca en paralelo.
-- Whisper corre con **prioridad baja** (`nice`) y 4 hilos; Ollama descarga el modelo de la RAM **60 s después** de resumir.
-- Audios muy cortos (< 20 palabras) no se resumen: no hace falta gastar el LLM.
-- El resumen general se recalcula solo si cambió el contenido.
+- **Un solo trabajo de IA a la vez**: cada audio se transcribe y se resume enseguida, uno tras otro. Nunca hay dos en paralelo, aunque subas muchos.
+- Whisper corre con **prioridad baja** (`nice`) y 4 hilos, y usa la GPU.
+- Ollama descarga el modelo de la memoria **60 s después** de resumir.
+- Los audios muy cortos no se resumen, y el resumen general solo se recalcula si cambió el contenido.
 
-Si aun así notas calor o ruido de ventiladores, mide con `make bench` y ajusta:
+Si notas calor o ventiladores, mídelo con `make stress` y ajusta:
 
 ```bash
-make up WHISPER_THREADS=2            # menos hilos para Whisper
-make up OLLAMA_MODEL=qwen2.5:3b      # resumen más ligero (peor calidad)
+make up WHISPER_THREADS=2          # menos hilos para Whisper
+make up OLLAMA_MODEL=qwen2.5:3b    # resumen más ligero (algo peor)
 ```
 
-## Configuración
+## 6. Configuración
 
-Variables que acepta `make` (y el `docker-compose.yml`): `PORT` (8080), `DATA_PATH` (`~/TranscriptorAudios`), `OLLAMA_MODEL` (`qwen2.5:7b`), `WHISPER_THREADS` (4), `RETENTION_DAYS` (7; `0` desactiva el borrado automático).
+Variables que acepta `make` (y el `docker-compose.yml`):
 
-Variables del backend (avanzado): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (12288), `MAX_UPLOAD_MB` (1024), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; rechaza otras cabeceras `Host` para evitar ataques de DNS rebinding).
+| Variable | Por defecto | Qué es |
+|---|---|---|
+| `PORT` | `8080` | Puerto de la web |
+| `DATA_PATH` | `~/TranscriptorAudios` | Dónde se guardan las sesiones |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
+| `WHISPER_THREADS` | `4` | Hilos de Whisper |
+| `WHISPER_FLAGS` | `-fa` | Flags extra de `whisper-server` (`-fa` = flash attention) |
+| `RETENTION_DAYS` | `7` | Días hasta el borrado automático (`0` = nunca) |
 
-**Spanglish:** Whisper se fuerza a español con un prompt inicial que incluye términos en inglés frecuentes (*deadline, meeting, commit…*). Con detección automática de idioma, un audio con mezcla podría cambiar a inglés a mitad de frase. Si tus audios usan otros términos recurrentes, añádelos en `WHISPER_PROMPT`.
+Avanzado (variables de la app): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (`12288`), `MAX_UPLOAD_MB` (`1024`), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; protege contra ataques de *DNS rebinding*).
 
-## Si algo falla
+**Spanglish:** Whisper se fuerza a español con un prompt que incluye términos en inglés frecuentes (*deadline, meeting, commit…*), porque con detección automática un audio mezclado podría saltar a inglés a mitad de frase. Si tus audios usan otros términos, añádelos a `WHISPER_PROMPT`.
 
-- **Aviso amarillo "Whisper/Ollama no responde"** → `make up`.
-- **"falta el modelo qwen2.5:7b"** → `ollama pull qwen2.5:7b`.
-- **Un audio falló** → botón *Reintentar* en ese audio (el texto ya transcrito no se pierde si solo falló el resumen).
-- Logs de los servicios nativos: `~/.transcriptor/whisper.log` y `~/.transcriptor/ollama.log`.
+---
 
-## Estructura del proyecto
+## Cómo funciona
+
+```
+Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (whisper.cpp, Metal)  ← nativo
+                              │                      └──► Ollama + qwen2.5:7b (Metal)   ← nativo
+                              └──► ~/TranscriptorAudios  (audios, textos, resúmenes)
+```
+
+- **Whisper y Ollama van fuera de Docker** porque Docker en macOS corre en una máquina virtual Linux que **no puede usar la GPU de Apple**. Nativos usan Metal: son mucho más rápidos y calientan menos.
+- **Go en el backend:** el trabajo pesado lo hacen `whisper.cpp` y Ollama (C/C++); la app solo coordina, y Go da un binario estático que en reposo usa unos pocos MB.
+- El contenedor corre con el sistema de ficheros en **solo lectura**, sin privilegios, con límite de 512 MB y 1 CPU, y **solo es accesible desde tu Mac** (`127.0.0.1`).
 
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
-web/       React + Vite + TypeScript (CSS propio, sigue el tema claro/oscuro del sistema)
-scripts/   services.sh (Whisper/Ollama nativos), bench.sh
+web/       React + Vite + TypeScript (CSS propio; sigue el tema claro/oscuro del sistema)
+scripts/   services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
 Dockerfile, docker-compose.yml, Makefile
 PRODUCT.md contexto de producto y diseño
 ```
 
 ## Estado de verificación
 
-Probado de punta a punta:
-
-- **Backend** (Go): 14 tests con detector de carreras, repetidos sin fallos.
-- **Contra el `whisper-server` real** (whisper.cpp 1.9.4, compilado desde el código fuente, en CPU y con un modelo de pruebas): el cliente, el formato de la petición (`/inference`, `language`, `prompt`, `carry_initial_prompt`, `response_format`) y los flags del script (`-m --host --port -t -fa`) funcionan; `scripts/services.sh` y `scripts/bench.sh` también.
-- **Docker**: la imagen corre con sistema de ficheros de solo lectura y usuario sin privilegios; el flujo completo en navegador (claro, oscuro, móvil, errores y reintentos) sin errores y con auditoría de accesibilidad (axe) sin violaciones.
-
-**No se pudo verificar fuera de un Mac real:**
-
-- La aceleración con Metal, los **tiempos y el consumo reales** (`make doctor` lo comprueba de una vez; `make bench FILE=audio.opus` mide con un audio tuyo) y la calidad de transcripción con `large-v3-turbo`.
-- El resumen con Ollama + `qwen2.5:7b` (se probó contra un servidor que imita su API `/api/chat`).
-- Que Homebrew instale el binario `whisper-server`. `make setup` lo comprueba y, si falta, te da los comandos para compilarlo (`WHISPER_BIN=…`).
+- **Probado en un Mac real** (Apple M4 Max, 36 GB): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
+- **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (claro, oscuro, móvil, errores) con auditoría de accesibilidad sin violaciones.
+- **Sin medir objetivamente:** la temperatura sostenida con audios muy largos. Para eso está `make stress`.
