@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -270,7 +272,8 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		n, err := io.Copy(out, part)
+		hasher := sha256.New()
+		n, err := io.Copy(io.MultiWriter(out, hasher), part)
 		out.Close()
 		if err != nil {
 			_ = os.Remove(a.store.AudioPath(id, file))
@@ -278,7 +281,8 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "no se pudo recibir el archivo")
 			return
 		}
-		items = append(items, &Item{ID: itemID, Name: name, File: file, Size: n, Status: StatusQueued, AddedAt: time.Now()})
+		items = append(items, &Item{ID: itemID, Name: name, File: file, Size: n, Hash: hex.EncodeToString(hasher.Sum(nil)),
+			Status: StatusQueued, AddedAt: time.Now()})
 	}
 	if len(items) == 0 {
 		writeErr(w, http.StatusBadRequest, "no se recibió ningún archivo")
@@ -286,25 +290,70 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	// Dentro de una misma subida, orden natural por nombre (WhatsApp numera por fecha).
 	sort.SliceStable(items, func(i, j int) bool { return naturalLess(items[i].Name, items[j].Name) })
-	ids := make([]string, len(items))
-	for i, it := range items {
-		ids[i] = it.ID
-	}
+	var added, skipped, replaced, process, drop []string
 	if !a.store.Update(id, func(s *Session) {
-		s.Items = append(s.Items, items...)
-		markGlobalPending(s)
+		for _, it := range items {
+			dup, same := -1, -1
+			for i, ex := range s.Items {
+				if dup < 0 && ex.Hash != "" && ex.Hash == it.Hash {
+					dup = i
+				}
+				if same < 0 && ex.Name == it.Name {
+					same = i
+				}
+			}
+			switch {
+			case dup >= 0 && s.Items[dup].Status != StatusError:
+				// Mismo audio y ya procesado (o en curso): se deja el existente tal cual.
+				skipped = append(skipped, it.Name)
+				drop = append(drop, it.File)
+			case dup >= 0 || same >= 0:
+				// Mismo audio que había fallado, o mismo nombre con contenido nuevo: reemplaza en su sitio.
+				at := dup
+				if at < 0 {
+					at = same
+				}
+				drop = append(drop, s.Items[at].File)
+				s.Items[at] = it
+				replaced = append(replaced, it.Name)
+				process = append(process, it.ID)
+			default:
+				s.Items = append(s.Items, it)
+				added = append(added, it.Name)
+				process = append(process, it.ID)
+			}
+		}
+		if len(process) > 0 {
+			markGlobalPending(s)
+		}
 	}) {
 		cleanup()
 		_ = os.RemoveAll(a.store.sessionDir(id)) // la sesión se borró durante la subida
 		writeErr(w, http.StatusNotFound, "sesión no encontrada")
 		return
 	}
-	if err := a.worker.Enqueue(batch{session: id, items: ids}); err != nil {
-		writeErr(w, http.StatusServiceUnavailable, err.Error())
-		return
+	for _, f := range drop {
+		_ = os.Remove(a.store.AudioPath(id, f))
 	}
-	data, _ := a.store.Snapshot(id)
-	writeRaw(w, http.StatusAccepted, data)
+	status := http.StatusOK
+	if len(process) > 0 {
+		if err := a.worker.Enqueue(batch{session: id, items: process}); err != nil {
+			writeErr(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		status = http.StatusAccepted
+	}
+	snap, _ := a.store.Snapshot(id)
+	writeJSON(w, status, map[string]any{
+		"session": json.RawMessage(snap), "added": nonNil(added), "skipped": nonNil(skipped), "replaced": nonNil(replaced),
+	})
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (a *API) retryItem(w http.ResponseWriter, r *http.Request) {

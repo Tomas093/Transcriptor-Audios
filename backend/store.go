@@ -45,6 +45,7 @@ type Item struct {
 	Name           string    `json:"name"`
 	File           string    `json:"file"`
 	Size           int64     `json:"size"`
+	Hash           string    `json:"hash,omitempty"` // SHA-256 del contenido: detecta el mismo audio subido otra vez
 	Status         string    `json:"status"`
 	Text           string    `json:"text"`
 	Summary        string    `json:"summary"`

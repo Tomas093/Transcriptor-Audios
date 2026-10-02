@@ -179,9 +179,9 @@ export default function App() {
         )}
 
         {app.notice ? (
-          <div className="toast" role="alert">
-            <Icon name="alert" size={16} />
-            <span>{app.notice}</span>
+          <div className={`toast toast-${app.notice.kind}`} role={app.notice.kind === "error" ? "alert" : "status"}>
+            <Icon name={app.notice.kind === "error" ? "alert" : "check"} size={16} />
+            <span>{app.notice.msg}</span>
             <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={app.dismissNotice} aria-label="Cerrar aviso">
               <Icon name="close" size={14} />
             </button>

@@ -2,6 +2,13 @@ import type { Health, Session, SessionInfo } from "./types";
 
 export class ApiError extends Error {}
 
+export interface UploadResult {
+  session: Session;
+  added: string[];
+  skipped: string[]; // el mismo audio ya estaba procesado: se dejó sin cambios
+  replaced: string[]; // mismo nombre con contenido nuevo, o un audio idéntico que había fallado
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -41,7 +48,7 @@ export const api = {
   upload: (id: string, files: File[]) => {
     const form = new FormData();
     for (const f of files) form.append("files", f, f.name);
-    return req<Session>(`/api/sessions/${id}/audios`, { method: "POST", body: form });
+    return req<UploadResult>(`/api/sessions/${id}/audios`, { method: "POST", body: form });
   },
   exportUrl: (id: string) => `/api/sessions/${id}/export`,
 };

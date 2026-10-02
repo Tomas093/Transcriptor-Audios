@@ -22,12 +22,12 @@ export function useApp() {
   const [loaded, setLoaded] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(readRoute());
   const [uploading, setUploading] = useState<{ id: string | null; count: number } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ msg: string; kind: "error" | "info" } | null>(null);
   const noticeTimer = useRef<number>(0);
   const gone = useRef(new Set<string>()); // sesiones borradas: no volver a pedirlas
 
-  const say = useCallback((msg: string) => {
-    setNotice(msg);
+  const say = useCallback((msg: string, kind: "error" | "info" = "error") => {
+    setNotice({ msg, kind });
     window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(null), 6000);
   }, []);
@@ -157,7 +157,19 @@ export function useApp() {
           id = created.id;
           navigate(id);
         }
-        upsert(await api.upload(id, audio));
+        const res = await api.upload(id, audio);
+        upsert(res.session);
+        const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+        const parts: string[] = [];
+        if (res.skipped.length) {
+          const n = res.skipped.length;
+          parts.push(`${n} ${plural(n, "audio ya estaba procesado", "audios ya estaban procesados")}: se dejó sin cambios`);
+        }
+        if (res.replaced.length) {
+          const n = res.replaced.length;
+          parts.push(`${n} ${plural(n, "audio reemplazado", "audios reemplazados")} por la versión nueva`);
+        }
+        if (parts.length) say(parts.join(" · ") + ".", "info");
       } catch (e) {
         say(e instanceof ApiError ? e.message : "No se pudieron subir los audios.");
       } finally {

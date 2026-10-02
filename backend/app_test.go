@@ -174,7 +174,14 @@ func (e *testEnv) createSession(t *testing.T) Session {
 	return s
 }
 
-func (e *testEnv) upload(t *testing.T, id string, files map[string]string) {
+type uploadResult struct {
+	Session  Session  `json:"session"`
+	Added    []string `json:"added"`
+	Skipped  []string `json:"skipped"`
+	Replaced []string `json:"replaced"`
+}
+
+func (e *testEnv) upload(t *testing.T, id string, files map[string]string) uploadResult {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	for name, path := range files {
@@ -184,9 +191,14 @@ func (e *testEnv) upload(t *testing.T, id string, files map[string]string) {
 	}
 	mw.Close()
 	resp, body := e.do(t, "POST", "/api/sessions/"+id+"/audios", buf.Bytes(), mw.FormDataContentType())
-	if resp.StatusCode != 202 {
+	if resp.StatusCode != 202 && resp.StatusCode != 200 {
 		t.Fatalf("subida: %d %s", resp.StatusCode, body)
 	}
+	var res uploadResult
+	if err := json.Unmarshal(body, &res); err != nil {
+		t.Fatalf("respuesta de subida inválida: %v %s", err, body)
+	}
+	return res
 }
 
 func (e *testEnv) wait(t *testing.T, id string, cond func(*Session) bool) Session {
@@ -217,10 +229,10 @@ func allSettled(s *Session) bool {
 func TestPipelineMultipleAudios(t *testing.T) {
 	e := newEnv(t)
 	tmp := t.TempDir()
-	a := makeAudio(t, tmp, "a.wav")
+	a1, a2, a3, a4 := makeTone(t, tmp, "1.wav", 300), makeTone(t, tmp, "2.wav", 400), makeTone(t, tmp, "3.wav", 500), makeTone(t, tmp, "4.wav", 600)
 	sess := e.createSession(t)
 	e.upload(t, sess.ID, map[string]string{
-		"PTT-20261002-WA0010.opus": a, "PTT-20261002-WA0002.opus": a, "PTT-20261002-WA0001.opus": a,
+		"PTT-20261002-WA0010.opus": a1, "PTT-20261002-WA0002.opus": a2, "PTT-20261002-WA0001.opus": a3,
 	})
 	// Nada más subir, la sesión ya está ocupada y el resumen general figura en curso.
 	e.store.Read(sess.ID, func(s *Session) {
@@ -278,7 +290,7 @@ func TestPipelineMultipleAudios(t *testing.T) {
 	}
 
 	// Segunda subida: el resumen general se recalcula con los 4 audios.
-	e.upload(t, sess.ID, map[string]string{"PTT-20261003-WA0001.opus": a})
+	e.upload(t, sess.ID, map[string]string{"PTT-20261003-WA0001.opus": a4})
 	s = e.wait(t, sess.ID, func(s *Session) bool {
 		return allSettled(s) && len(s.Items) == 4 && s.Global.Items == 4 && s.Global.Status == GlobalDone
 	})
@@ -500,7 +512,8 @@ func TestDNSRebindingIsBlocked(t *testing.T) {
 // terminar con texto y resumen, y el modelo nunca debe recibir dos peticiones a la vez.
 func TestConcurrentUploadsAllSummarized(t *testing.T) {
 	e := newEnv(t)
-	a := makeAudio(t, t.TempDir(), "a.wav")
+	dir := t.TempDir()
+	tone := func(i int) string { return makeTone(t, dir, fmt.Sprintf("t%d.wav", i), 300+i*37) } // contenidos distintos
 	var inflight, maxInflight atomic.Int32
 	e.f.ollama.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/tags" {
@@ -526,15 +539,15 @@ func TestConcurrentUploadsAllSummarized(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			e.upload(t, shared.ID, map[string]string{fmt.Sprintf("s%d-a.opus", i): a, fmt.Sprintf("s%d-b.opus", i): a})
+			e.upload(t, shared.ID, map[string]string{fmt.Sprintf("s%d-a.opus", i): tone(i * 2), fmt.Sprintf("s%d-b.opus", i): tone(i*2 + 1)})
 		}(i)
 	}
-	for _, s := range other {
+	for k, s := range other {
 		wg.Add(1)
-		go func(id string) {
+		go func(id string, k int) {
 			defer wg.Done()
-			e.upload(t, id, map[string]string{"x1.opus": a, "x2.opus": a, "x3.opus": a})
-		}(s.ID)
+			e.upload(t, id, map[string]string{"x1.opus": tone(20 + k*3), "x2.opus": tone(21 + k*3), "x3.opus": tone(22 + k*3)})
+		}(s.ID, k)
 	}
 	wg.Wait()
 
@@ -587,5 +600,102 @@ func TestRevIncreases(t *testing.T) {
 	st.Read(s.ID, func(s *Session) { b = s.Rev })
 	if a < 1 || b != a+1 {
 		t.Fatalf("rev %d → %d", a, b)
+	}
+}
+
+func makeTone(t *testing.T, dir, name string, hz int) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	cmd := exec.Command("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=%d:duration=1", hz), p)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg: %v %s", err, out)
+	}
+	return p
+}
+
+// Subir otra vez el mismo audio no lo duplica ni lo vuelve a procesar; subir el mismo nombre
+// con otro contenido lo reemplaza en su sitio; un duplicado dentro de la misma subida se ignora.
+func TestReuploadSameAudioIsDeduplicated(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	a := makeTone(t, dir, "a.wav", 440)
+	b := makeTone(t, dir, "b.wav", 880)
+	sess := e.createSession(t)
+
+	r := e.upload(t, sess.ID, map[string]string{"PTT-WA0001.opus": a, "PTT-WA0002.opus": b})
+	if len(r.Added) != 2 {
+		t.Fatalf("añadidos=%v", r.Added)
+	}
+	s := e.wait(t, sess.ID, func(s *Session) bool { return allSettled(s) && s.Global.Status == GlobalDone })
+	idA, idB := s.Items[0].ID, s.Items[1].ID
+	whisperBefore, chatBefore := e.f.whisperCalls.Load(), e.f.chatCalls.Load()
+
+	// 1) El mismo audio otra vez (aunque cambie de nombre): sin cambios, sin reprocesar.
+	r = e.upload(t, sess.ID, map[string]string{"PTT-WA0001.opus": a})
+	if len(r.Skipped) != 1 || len(r.Added) != 0 || len(r.Replaced) != 0 {
+		t.Fatalf("resultado=%+v", r)
+	}
+	r = e.upload(t, sess.ID, map[string]string{"copia-renombrada.opus": a})
+	if len(r.Skipped) != 1 || len(r.Session.Items) != 2 {
+		t.Fatalf("un audio idéntico con otro nombre también es duplicado: %+v", r)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if e.f.whisperCalls.Load() != whisperBefore || e.f.chatCalls.Load() != chatBefore {
+		t.Errorf("no debe reprocesar nada (whisper %d→%d, llm %d→%d)", whisperBefore, e.f.whisperCalls.Load(), chatBefore, e.f.chatCalls.Load())
+	}
+	s = e.wait(t, sess.ID, allSettled)
+	if s.Items[0].ID != idA || s.Items[1].ID != idB || s.Items[0].Text == "" || s.Items[0].Summary == "" {
+		t.Errorf("el audio ya procesado debe quedar intacto: %+v", s.Items[0])
+	}
+	entries, _ := os.ReadDir(e.store.audioDir(sess.ID))
+	if len(entries) != 2 {
+		t.Errorf("no deben quedar archivos de audio duplicados: %d", len(entries))
+	}
+
+	// 2) Mismo nombre, contenido nuevo: reemplaza en su sitio y se reprocesa.
+	c := makeTone(t, dir, "c.wav", 1200)
+	r = e.upload(t, sess.ID, map[string]string{"PTT-WA0001.opus": c})
+	if len(r.Replaced) != 1 || len(r.Session.Items) != 2 {
+		t.Fatalf("resultado=%+v", r)
+	}
+	s = e.wait(t, sess.ID, func(s *Session) bool { return allSettled(s) && s.Items[0].ID != idA && s.Global.Status == GlobalDone })
+	if s.Items[0].Name != "PTT-WA0001.opus" || s.Items[1].ID != idB || s.Items[0].Status != StatusDone {
+		t.Errorf("el reemplazo debe ocupar el mismo lugar: %+v / %+v", s.Items[0], s.Items[1])
+	}
+	if e.f.whisperCalls.Load() != whisperBefore+1 {
+		t.Errorf("solo el audio nuevo se transcribe (whisper %d→%d)", whisperBefore, e.f.whisperCalls.Load())
+	}
+	entries, _ = os.ReadDir(e.store.audioDir(sess.ID))
+	if len(entries) != 2 {
+		t.Errorf("el audio reemplazado debe borrarse del disco: %d archivos", len(entries))
+	}
+
+	// 3) Dos copias idénticas en la misma subida: solo entra una.
+	d := makeTone(t, dir, "d.wav", 600)
+	r = e.upload(t, sess.ID, map[string]string{"x1.opus": d, "x2.opus": d})
+	if len(r.Added) != 1 || len(r.Skipped) != 1 {
+		t.Errorf("duplicado en la misma subida: %+v", r)
+	}
+	e.wait(t, sess.ID, func(s *Session) bool { return allSettled(s) && len(s.Items) == 3 && s.Global.Status == GlobalDone })
+}
+
+// Un audio idéntico que había fallado se vuelve a procesar al subirlo de nuevo.
+func TestReuploadFailedAudioRetries(t *testing.T) {
+	e := newEnv(t)
+	a := makeTone(t, t.TempDir(), "a.wav", 440)
+	e.f.failWhisperOnce.Store(true)
+	sess := e.createSession(t)
+	e.upload(t, sess.ID, map[string]string{"x.opus": a})
+	s := e.wait(t, sess.ID, allSettled)
+	if s.Items[0].Status != StatusError {
+		t.Fatalf("esperaba error: %+v", s.Items[0])
+	}
+	r := e.upload(t, sess.ID, map[string]string{"x.opus": a})
+	if len(r.Replaced) != 1 || len(r.Skipped) != 0 {
+		t.Fatalf("resultado=%+v", r)
+	}
+	s = e.wait(t, sess.ID, func(s *Session) bool { return allSettled(s) && s.Items[0].Status == StatusDone })
+	if len(s.Items) != 1 || s.Items[0].Text == "" {
+		t.Errorf("%+v", s.Items)
 	}
 }

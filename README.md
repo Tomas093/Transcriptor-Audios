@@ -34,7 +34,7 @@ make down    # lo baja todo y libera la memoria
 ```
 
 1. En WhatsApp, guarda los audios (en la versión de escritorio: clic derecho sobre el audio → *Guardar como…*).
-2. Arrástralos a la ventana (o pulsa el botón). Puedes añadir más audios a la misma sesión más tarde.
+2. Arrástralos a la ventana (o pulsa el botón). Puedes añadir más audios a la misma sesión más tarde. Si subes un audio que ya estaba (mismo contenido), se deja el ya procesado sin tocar; si subes uno con el mismo nombre pero contenido distinto, reemplaza al anterior en su sitio y se vuelve a procesar.
 3. Lee el texto y el resumen. *Copiar todo* o *Descargar* (Markdown) para llevártelo.
 
 Tus sesiones quedan en `~/TranscriptorAudios/sessions/<fecha>-<id>/`:
