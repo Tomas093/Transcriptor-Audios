@@ -1,0 +1,8 @@
+node_modules/
+web/dist/
+backend/transcriptor
+*.log
+.DS_Store
+.env
+data/
+.impeccable/
