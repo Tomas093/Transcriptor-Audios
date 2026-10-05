@@ -147,6 +147,7 @@ Si notas calor o ventiladores, mídelo con `make stress` y ajusta:
 ```bash
 make up WHISPER_THREADS=2          # menos hilos para Whisper
 make up OLLAMA_MODEL=qwen2.5:3b    # resumen más ligero (algo peor)
+make setup up WHISPER_MODEL_FILE=ggml-large-v3-turbo-q5_0.bin   # Whisper más rápido y liviano (algo menos preciso)
 ```
 
 ## 6. Configuración
@@ -158,6 +159,7 @@ Variables que acepta `make` (y el `docker-compose.yml`):
 | `PORT` | `4747` | Puerto de la web |
 | `DATA_PATH` | `~/TranscriptorAudios` | Dónde se guardan las sesiones |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
+| `WHISPER_MODEL_FILE` | `ggml-large-v3.bin` | Modelo de Whisper (el más preciso, ~3 GB). Más rápido y liviano: `ggml-large-v3-turbo-q5_0.bin` |
 | `WHISPER_THREADS` | `4` | Hilos de Whisper |
 | `WHISPER_FLAGS` | `-fa` | Flags extra de `whisper-server` (`-fa` = flash attention) |
 | `RETENTION_DAYS` | `1` | Días sin actividad hasta el borrado automático (`0` = nunca) |

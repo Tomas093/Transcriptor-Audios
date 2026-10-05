@@ -6,7 +6,7 @@ set -uo pipefail
 
 BASE="http://127.0.0.1:${PORT:-4747}"
 STATE_DIR="${TRANSCRIPTOR_HOME:-$HOME/.transcriptor}"
-MODEL_FILE="${WHISPER_MODEL_FILE:-ggml-large-v3-turbo-q5_0.bin}"
+MODEL_FILE="${WHISPER_MODEL_FILE:-ggml-large-v3.bin}"
 FAIL=0
 ok()   { echo "  ✔ $*"; }
 bad()  { echo "  ✘ $*"; FAIL=1; }

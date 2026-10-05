@@ -4,7 +4,7 @@
 set -euo pipefail
 
 STATE_DIR="${TRANSCRIPTOR_HOME:-$HOME/.transcriptor}"
-MODEL_FILE="${WHISPER_MODEL_FILE:-ggml-large-v3-turbo-q5_0.bin}"
+MODEL_FILE="${WHISPER_MODEL_FILE:-ggml-large-v3.bin}"
 MODEL="$STATE_DIR/models/$MODEL_FILE"
 WHISPER_PORT="${WHISPER_PORT:-8178}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
