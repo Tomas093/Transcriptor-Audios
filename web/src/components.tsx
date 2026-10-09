@@ -507,7 +507,7 @@ export function Welcome({ children }: { children: ReactNode }) {
       <div className="welcome-inner">
         <h1>Lee tus audios en vez de escucharlos</h1>
         <p className="welcome-lead">
-          Guarda los audios desde WhatsApp y suéltalos aquí. Todo se transcribe en tu Mac, sin enviar nada a internet.
+          Guarda los audios desde WhatsApp y suéltalos aquí. Todo se transcribe en tu equipo, sin enviar nada a internet.
         </p>
         {children}
         <ul className="tips">

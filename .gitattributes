@@ -1,0 +1,5 @@
+# Los scripts de Windows necesitan CRLF; los de bash, LF (también en checkouts de Windows).
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf
+Makefile text eol=lf

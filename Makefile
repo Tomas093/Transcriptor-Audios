@@ -1,3 +1,6 @@
+ifeq ($(OS),Windows_NT)
+$(error En Windows usa transcriptor.cmd en lugar de make (por ejemplo: .\transcriptor.cmd up))
+endif
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 

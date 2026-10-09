@@ -6,11 +6,11 @@ product
 
 ## Users
 
-Un estudiante que usa un Mac y recibe audios de WhatsApp que no puede escuchar en clase. Los abre en el portátil, entre clases o durante ellas, con poca atención disponible y a veces con la pantalla a la vista de otros. Quiere leer rápido lo que dice cada audio y captar la idea general sin escucharlos. Los audios son en español, a veces mezclado con inglés (spanglish), de menos de 5 minutos cada uno, y suele subir varios a la vez (más de 7 minutos en total).
+Un estudiante que usa un Mac o un PC con Windows y recibe audios de WhatsApp que no puede escuchar en clase. Los abre en el portátil, entre clases o durante ellas, con poca atención disponible y a veces con la pantalla a la vista de otros. Quiere leer rápido lo que dice cada audio y captar la idea general sin escucharlos. Los audios son en español, a veces mezclado con inglés (spanglish), de menos de 5 minutos cada uno, y suele subir varios a la vez (más de 7 minutos en total).
 
 ## Product Purpose
 
-Transcribir de forma local (sin enviar nada a la nube y sin coste) los audios de WhatsApp descargados, y devolver el texto de cada audio más un resumen por audio y un resumen global de todos los de la sesión. Las sesiones funcionan como chats: una barra lateral con el historial y un hilo donde cada audio aparece con su transcripción y su resumen. Tiene éxito si puedes soltar los audios, leer el resultado en segundos y olvidarte de la herramienta, sin que el Mac se caliente ni se ralentice.
+Transcribir de forma local (sin enviar nada a la nube y sin coste) los audios de WhatsApp descargados, y devolver el texto de cada audio más un resumen por audio y un resumen global de todos los de la sesión. Las sesiones funcionan como chats: una barra lateral con el historial y un hilo donde cada audio aparece con su transcripción y su resumen. Tiene éxito si puedes soltar los audios, leer el resultado en segundos y olvidarte de la herramienta, sin que el equipo se caliente ni se ralentice.
 
 ## Brand Personality
 
