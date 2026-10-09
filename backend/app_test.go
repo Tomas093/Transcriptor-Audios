@@ -144,8 +144,11 @@ func newEnv(t *testing.T) *testEnv {
 	}
 	worker := NewWorker(store, NewWhisper(cfg), NewOllama(cfg), cfg.TmpDir)
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go worker.Run(ctx)
+	done := make(chan struct{})
+	go func() { worker.Run(ctx); close(done) }()
+	// Antes de que se borre el TempDir (las limpiezas van en orden inverso): parar el worker y
+	// esperar a que suelte la sesión que estuviera escribiendo.
+	t.Cleanup(func() { cancel(); <-done })
 	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg)}
 	srv := httptest.NewServer(api.Handler())
 	t.Cleanup(srv.Close)
