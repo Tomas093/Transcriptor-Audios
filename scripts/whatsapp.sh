@@ -10,8 +10,13 @@
 #   estado      muestra qué vigila
 #   vigilar     en primer plano, para ver qué hace (Ctrl+C para salir)
 #
-# La configuración la escribe la web en <DATA_PATH>/whatsapp.conf. El estado (para la web) se escribe
-# en <DATA_PATH>/whatsapp-status.json. Necesita "Acceso total al disco" para el programa que lo ejecuta.
+# La configuración la escribe la web en <DATA_PATH>/whatsapp.conf; mientras no se guarde nada ahí,
+# valen las variables del .env (WHATSAPP_CHATS, WHATSAPP_BACKLOG_MIN, BACKGROUND_*). El estado (para la
+# web) se escribe en <DATA_PATH>/whatsapp-status.json. Necesita "Acceso total al disco" para el programa
+# que lo ejecuta (el agente: ~/.transcriptor/bin/transcriptor-agent).
+#
+# Consumo: el bucle casi no lanza procesos. Por sondeo solo corre un `find` (y nada más si no hay audios
+# nuevos); la hora sale de $SECONDS, la configuración se mira con `-nt` y la espera es un `read -t`.
 set -uo pipefail
 
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -30,45 +35,63 @@ AGENTPID="$STATE_DIR/agent.pid"        # agente siempre activo
 AGENT_STARTED="$STATE_DIR/agent-started"       # existe si el agente encendió la app (y puede apagarla)
 DOCKER_BY_AGENT="$STATE_DIR/agent-docker"      # existe si el agente abrió Docker Desktop
 LOG="$STATE_DIR/whatsapp.log"
-POLL="${WHATSAPP_POLL:-5}"             # segundos entre sondeos con todo encendido
-POLL_IDLE="${WHATSAPP_POLL_IDLE:-15}"  # ... con el agente y todo apagado, o sin nada configurado
+POLL="${WHATSAPP_POLL:-10}"            # segundos entre sondeos con todo encendido
+POLL_IDLE="${WHATSAPP_POLL_IDLE:-30}"  # ... con el agente y todo apagado, o sin nada configurado
+# Valores por defecto del .env del proyecto (el agente lo lanza launchd, que no pasa por make).
+if [[ -f "$ROOT/.env" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    if [[ "$line" =~ ^(WHATSAPP_CHATS|WHATSAPP_BACKLOG_MIN|BACKGROUND_ENABLED|BACKGROUND_IDLE_MIN|BACKGROUND_QUIT_DOCKER)=(.*)$ ]]; then
+      k="${BASH_REMATCH[1]}"; [[ -z "${!k:-}" ]] && export "$k=${BASH_REMATCH[2]}"
+    fi
+  done <"$ROOT/.env"
+fi
 export PATH="${PATH:-/usr/bin:/bin}:/opt/homebrew/bin:/usr/local/bin:/Applications/Docker.app/Contents/Resources/bin:/usr/sbin:/sbin"
 mkdir -p "$STATE_DIR"
 
 # stat/date: GNU primero (en GNU `stat -f` no falla, solo hace otra cosa) y luego BSD (macOS).
-mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 # Hora de cambio (ctime), no de modificación: WhatsApp conserva la fecha original al reenviar un
 # audio (lo copia con su mtime viejo), pero el ctime sí cambia cuando aparece el archivo nuevo.
 ctime() { stat -c %Z "$1" 2>/dev/null || stat -f %c "$1" 2>/dev/null; }
 statms() { stat -c '%Z %s' "$1" 2>/dev/null || stat -f '%c %z' "$1" 2>/dev/null; }
 stamp() { date -r "$1" '+%Y-%m-%d %H.%M.%S' 2>/dev/null || date -d "@$1" '+%Y-%m-%d %H.%M.%S'; }
-touch_epoch() { touch -t "$(date -r "$2" '+%Y%m%d%H%M.%S' 2>/dev/null || date -d "@$2" '+%Y%m%d%H%M.%S')" "$1"; }
-alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
+alive() { local p; [[ -f "$1" ]] && read -r p <"$1" 2>/dev/null && kill -0 "$p" 2>/dev/null; }   # sin procesos: read y kill son internos
 log() { echo "$(date '+%F %T') $*"; }
 
-# --- Configuración (la escribe la web) --------------------------------------------------------
-HAVE_CONF=0; CONF_M=""; C_MODE=off; C_CHATS=""; C_BACKLOG=60; BG_ENABLED=0; IDLE_MIN=10; QUIT_DOCKER=0
+# --- Configuración -----------------------------------------------------------------------------
+# Lo guardado en la web (whatsapp.conf) manda; si no hay nada guardado, valen las variables del .env.
+HAVE_CONF=0; C_MODE=off; C_CHATS=""; C_BACKLOG=60; BG_ENABLED=0; IDLE_MIN=10; QUIT_DOCKER=0; CHATS=""
+CONF_STAMP="$STATE_DIR/whatsapp-conf.stamp"
 conf_get() { sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -1 | tr -d '\r'; }
 reload_conf() { # devuelve 0 si la configuración cambió
-  local m; m="$(mtime "$CONF")" || m=""
-  [[ "$m" == "$CONF_M" ]] && return 1
-  CONF_M="$m"
-  if [[ -z "$m" ]]; then HAVE_CONF=0; C_MODE=off; C_CHATS=""; BG_ENABLED=0; return 0; fi
-  HAVE_CONF=1
-  C_MODE="$(conf_get WHATSAPP_MODE)"; C_CHATS="$(conf_get WHATSAPP_CHATS)"
-  C_BACKLOG="$(conf_get WHATSAPP_BACKLOG_MIN)"; BG_ENABLED="$(conf_get BACKGROUND_ENABLED)"
-  IDLE_MIN="$(conf_get BACKGROUND_IDLE_MIN)"; QUIT_DOCKER="$(conf_get BACKGROUND_QUIT_DOCKER)"
+  if [[ -f "$CONF" ]]; then
+    # -nt es interno de bash: comprobar si cambió no lanza ningún proceso.
+    [[ $HAVE_CONF == 1 && ! "$CONF" -nt "$CONF_STAMP" ]] && return 1
+    touch -r "$CONF" "$CONF_STAMP" 2>/dev/null
+    HAVE_CONF=1
+    C_MODE="$(conf_get WHATSAPP_MODE)"; C_CHATS="$(conf_get WHATSAPP_CHATS)"
+    C_BACKLOG="$(conf_get WHATSAPP_BACKLOG_MIN)"; BG_ENABLED="$(conf_get BACKGROUND_ENABLED)"
+    IDLE_MIN="$(conf_get BACKGROUND_IDLE_MIN)"; QUIT_DOCKER="$(conf_get BACKGROUND_QUIT_DOCKER)"
+  else
+    [[ $HAVE_CONF == 2 ]] && return 1
+    HAVE_CONF=2
+    C_CHATS="${WHATSAPP_CHATS:-}"; C_CHATS="${C_CHATS// /}"
+    case "$C_CHATS" in all) C_MODE=all ;; "") C_MODE=off ;; *) C_MODE=chats ;; esac
+    C_BACKLOG="${WHATSAPP_BACKLOG_MIN:-60}"; BG_ENABLED="${BACKGROUND_ENABLED:-0}"
+    IDLE_MIN="${BACKGROUND_IDLE_MIN:-10}"; QUIT_DOCKER="${BACKGROUND_QUIT_DOCKER:-0}"
+  fi
   [[ "$C_BACKLOG" =~ ^[0-9]+$ ]] || C_BACKLOG=60
   [[ "$IDLE_MIN" =~ ^[0-9]+$ && "$IDLE_MIN" -ge 1 ]] || IDLE_MIN=10
+  # Lista de chats ya resuelta (un id por línea, o "all"), para no recalcularla en cada sondeo.
+  case "$C_MODE" in
+    all) CHATS=all ;;
+    chats) CHATS="$(printf '%s\n' "$C_CHATS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')" ;;
+    *) CHATS="" ;;
+  esac
   return 0
 }
-# "all" (un solo valor), o la lista de ids, o nada.
-chat_list() {
-  case "$C_MODE" in
-    all) echo all ;;
-    chats) printf '%s\n' "$C_CHATS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' ;;
-  esac
-}
+chat_list() { [[ -n "$CHATS" ]] && printf '%s\n' "$CHATS"; }
+conf_source() { [[ $HAVE_CONF == 1 ]] && echo "web ($CONF)" || echo ".env (aún no se guardó nada en la web)"; }
 
 # --- Estado para la web ------------------------------------------------------------------------
 HOST_KIND=stack; STACK=on; ERROR=""; LAST_CHAT=""; LAST_AT=0; DET_CHAT=""; DET_AT=0; COPIED=0
@@ -77,7 +100,8 @@ clean() { printf '%s' "$1" | tr -d '"\\\n\r' | cut -c1-280; }
 write_status() { # $1 = ahora
   local body
   body="\"host\":\"$HOST_KIND\",\"stack\":\"$STACK\",\"error\":\"$(clean "$ERROR")\",\"lastChat\":\"$(clean "$LAST_CHAT")\",\"lastAt\":$LAST_AT,\"detected\":\"$(clean "$DET_CHAT")\",\"detectedAt\":$DET_AT,\"copied\":$COPIED"
-  if [[ "$body" != "$LAST_BODY" || $(($1 - LAST_WRITE)) -ge 30 ]]; then
+  # La web da al vigilante por caído si el estado tiene más de 90 s: se reescribe cada ~50 s.
+  if [[ "$body" != "$LAST_BODY" || $(($1 - LAST_WRITE)) -ge 50 ]]; then
     printf '{%s,"updatedAt":%s}\n' "$body" "$1" >"$STATUS.tmp" 2>/dev/null && mv "$STATUS.tmp" "$STATUS"
     LAST_BODY="$body"; LAST_WRITE="$1"
   fi
@@ -87,7 +111,11 @@ READ_ERR=""
 can_read_media() { READ_ERR="$(ls "$MEDIA" 2>&1 >/dev/null)"; [[ -z "$READ_ERR" ]]; }
 no_access_msg() {
   if [[ "$READ_ERR" == *"not permitted"* || "$READ_ERR" == *"Operation not"* ]]; then
-    echo "Falta permiso de Acceso total al disco para ${BASH:-bash} (Ajustes del Sistema → Privacidad y seguridad). Si ya lo diste, reinicia el vigilante: make down && make up."
+    if [[ "$HOST_KIND" == agent ]]; then
+      echo "Falta permiso de Acceso total al disco para transcriptor-agent ($STATE_DIR/bin/transcriptor-agent): Ajustes del Sistema → Privacidad y seguridad. Después: launchctl kickstart -k gui/$(id -u)/com.transcriptor.agent"
+    else
+      echo "Falta permiso de Acceso total al disco para el programa desde el que ejecutas make up (Terminal, WebStorm…). Mejor: instala el agente (make agente), que tiene su propio permiso."
+    fi
   else
     echo "No puedo leer la carpeta de WhatsApp ($MEDIA): ${READ_ERR:-error desconocido}"
   fi
@@ -105,30 +133,37 @@ deliver() { # origen mtime
 }
 
 SEEN_MEM=$'\n'
-MARK="$STATE_DIR/whatsapp-mark"
-# Copia los audios nuevos. Un solo `find` por sondeo, solo con lo posterior a la marca: no se
-# examinan los miles de ficheros viejos. Devuelve cuántos copió en NEW_COPIED.
-scan_copy() { # $1 = ahora, $2 = inicio (epoch)
+ERRF="$STATE_DIR/whatsapp-find.err"
+# Copia los audios nuevos. Un solo `find` por sondeo, con -cmin (solo lo cambiado en los últimos
+# minutos): no se examinan los miles de ficheros viejos ni se crea ningún fichero marca.
+# Devuelve cuántos copió en NEW_COPIED; si no puede leer la carpeta, deja el motivo en ERROR.
+scan_copy() { # $1 = ahora, $2 = inicio (epoch): no copia nada anterior; $3 = ventana en minutos
   NEW_COPIED=0
-  local chats dirs=() chat f ms m s
-  chats="$(chat_list)"
-  [[ -n "$chats" ]] || return 0
-  if printf '%s\n' "$chats" | grep -qx all; then dirs=("$MEDIA"); else
-    while IFS= read -r chat; do [[ -d "$MEDIA/$chat" ]] && dirs+=("$MEDIA/$chat"); done <<<"$chats"
+  local dirs=() chat f ms m s out
+  [[ -n "$CHATS" ]] || return 0
+  if [[ "$CHATS" == all ]]; then dirs=("$MEDIA"); else
+    while IFS= read -r chat; do [[ -d "$MEDIA/$chat" ]] && dirs+=("$MEDIA/$chat"); done <<<"$CHATS"
   fi
-  [[ ${#dirs[@]} -gt 0 ]] || return 0
-  touch_epoch "$MARK" "$2" 2>/dev/null || return 0
+  if [[ ${#dirs[@]} -eq 0 ]]; then   # todavía no hay audios de esos chats... o no hay permiso
+    can_read_media || ERROR="$(no_access_msg)"
+    return 0
+  fi
+  if ! out="$(find "${dirs[@]}" -type f -name '*.opus' -cmin "-$3" 2>"$ERRF")"; then
+    READ_ERR="$(cat "$ERRF" 2>/dev/null)"; ERROR="$(no_access_msg)"; return 0
+  fi
+  [[ -n "$out" ]] || return 0
   while IFS= read -r f; do
     [[ -n "$f" && "$SEEN_MEM" != *$'\n'"$f"$'\n'* ]] || continue
     ms="$(statms "$f")" || continue
     m="${ms% *}"; s="${ms#* }"
+    [[ "$m" -ge "$2" ]] || continue                          # anterior al inicio (o a la ventana hacia atrás)
     [[ "${s:-0}" -gt 0 && $(($1 - m)) -ge 3 ]] || continue   # vacío o aún escribiéndose
     if deliver "$f" "$m"; then
       SEEN_MEM+="$f"$'\n'; echo "$f" >>"$SEENFILE"
       NEW_COPIED=$((NEW_COPIED + 1)); COPIED=$((COPIED + 1)); LAST_AT="$1"
       chat="${f#"$MEDIA"/}"; LAST_CHAT="${chat%%/*}"
     fi
-  done < <(find "${dirs[@]}" -type f -name '*.opus' -cnewer "$MARK" 2>/dev/null)
+  done <<<"$out"
 }
 
 # Detección de chat: mientras la web lo pide (unos minutos), mira todos los chats y anota el de
@@ -174,44 +209,56 @@ stop_stack() {
 }
 
 # --- Bucle principal ----------------------------------------------------------------------------
+# Espera sin lanzar `sleep`: `read -t` sobre una tubería propia que nunca recibe nada.
+open_nap() {
+  local fifo="$STATE_DIR/.nap-$$"
+  rm -f "$fifo"; mkfifo "$fifo" && exec 9<>"$fifo"; rm -f "$fifo"
+}
+nap() { read -r -t "$1" -u 9 _ 2>/dev/null || true; }
+
 run_loop() { # $1 = stack | agent
   HOST_KIND="$1"
   touch "$SEENFILE"
   SEEN_MEM+="$(cat "$SEENFILE")"$'\n'
-  local now start last_act sleep_s
-  now="$(date +%s)"; last_act="$now"; start="$now"
+  open_nap
+  local t0 now start last_act last_scan sleep_s window polls=0
+  t0="$(date +%s)"; SECONDS=0
+  now="$t0"; last_act="$now"; start="$now"; last_scan="$now"
   log "vigilante ($HOST_KIND) en marcha → $INBOX"
   while :; do
-    now="$(date +%s)"
+    now=$((t0 + SECONDS)); polls=$((polls + 1))
     if [[ "$HOST_KIND" == stack ]] && alive "$AGENTPID"; then
       log "el agente en segundo plano ya vigila: este vigilante se retira"
       rm -f "$PIDFILE"; exit 0
     fi
     if reload_conf; then
       start=$((now - C_BACKLOG * 60))   # al cambiar la configuración, vuelve a mirar hacia atrás
-      log "configuración: modo=$C_MODE chats=$C_CHATS atrás=${C_BACKLOG}min segundo plano=$BG_ENABLED"
+      last_scan="$start"
+      log "configuración ($(conf_source)): modo=$C_MODE chats=$C_CHATS atrás=${C_BACKLOG}min segundo plano=$BG_ENABLED"
     fi
-    local chats detect=0; chats="$(chat_list)"
+    local detect=0
     detect_active "$now" && detect=1
-    ERROR=""
-    if [[ -n "$chats" || $detect == 1 ]]; then
-      if can_read_media; then
-        mkdir -p "$INBOX"
-        scan_copy "$now" "$start"
-        [[ $detect == 1 ]] && detect_scan "$now"
-      else
-        ERROR="$(no_access_msg)"; NEW_COPIED=0
-      fi
-    else
-      NEW_COPIED=0
+    ERROR=""; NEW_COPIED=0
+    if [[ -n "$CHATS" ]]; then
+      # Ventana de -cmin: lo que pasó desde el sondeo anterior, con margen (el Mac pudo dormir).
+      window=$(((now - last_scan) / 60 + 2))
+      mkdir -p "$INBOX"
+      scan_copy "$now" "$start" "$window"
+      [[ -z "$ERROR" ]] && last_scan="$now"
+    fi
+    if [[ $detect == 1 ]]; then
+      if can_read_media; then detect_scan "$now"; else ERROR="$(no_access_msg)"; fi
     fi
 
     if [[ "$HOST_KIND" == agent ]]; then
-      if stack_on; then STACK=on; else STACK=off; fi
+      # Preguntar a la app si está encendida solo cuando importa (o cada ~2 min, para el estado).
+      if [[ $NEW_COPIED -gt 0 || -f "$AGENT_STARTED" || $((polls % 4)) == 1 ]]; then
+        if stack_on; then STACK=on; else STACK=off; fi
+      fi
       if [[ "$BG_ENABLED" == 1 ]]; then
         if [[ $NEW_COPIED -gt 0 ]]; then
           last_act="$now"
-          [[ $STACK == off ]] && { start_stack; now="$(date +%s)"; last_act="$now"; stack_on && STACK=on; }
+          if [[ $STACK == off ]]; then start_stack; now=$((t0 + SECONDS)); last_act="$now"; stack_on && STACK=on; fi
         fi
         if [[ $STACK == on && -f "$AGENT_STARTED" ]]; then
           [[ "$(busy_sessions)" -gt 0 ]] && last_act="$now"
@@ -222,10 +269,10 @@ run_loop() { # $1 = stack | agent
 
     write_status "$now"
     if [[ $detect == 1 ]]; then sleep_s=2
-    elif [[ -z "$chats" ]]; then sleep_s="$POLL_IDLE"
+    elif [[ -z "$CHATS" ]]; then sleep_s="$POLL_IDLE"
     elif [[ "$HOST_KIND" == agent && $STACK == off ]]; then sleep_s="$POLL_IDLE"
     else sleep_s="$POLL"; fi
-    sleep "$sleep_s" & wait $!   # en segundo plano + wait: las señales (apagar) se atienden al instante
+    nap "$sleep_s"
   done
 }
 
@@ -241,6 +288,10 @@ agent() {
 
 start() {
   alive "$AGENTPID" && return 0   # el agente ya vigila (y copia) por su cuenta
+  # Agente instalado pero parado (p. ej. tras quitarle el permiso y volver a darlo): se lo arranca.
+  if [[ -f "$HOME/Library/LaunchAgents/com.transcriptor.agent.plist" ]] && command -v launchctl >/dev/null; then
+    launchctl kickstart "gui/$(id -u)/com.transcriptor.agent" >/dev/null 2>&1 && return 0
+  fi
   alive "$PIDFILE" && return 0
   nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "$!"' -- bash "$SELF" vigilar >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
@@ -256,8 +307,9 @@ estado() {
   case "$C_MODE" in
     all) echo "Vigila: TODOS los chats" ;;
     chats) echo "Chats vigilados:"; chat_list | sed 's/^/  /' ;;
-    *) echo "No vigila ningún chat (actívalo en la web: Configuración)." ;;
+    *) echo "No vigila ningún chat (actívalo en la web: Configuración, o WHATSAPP_CHATS en el .env)." ;;
   esac
+  echo "Configuración tomada de: $(conf_source)"
   echo "Al configurar, mira hacia atrás ${C_BACKLOG} min · segundo plano: $([[ "$BG_ENABLED" == 1 ]] && echo sí || echo no)"
   if alive "$AGENTPID"; then echo "Agente: en marcha (pid $(cat "$AGENTPID"))"
   elif alive "$PIDFILE"; then echo "Vigilante de make up: en marcha (pid $(cat "$PIDFILE"))"
