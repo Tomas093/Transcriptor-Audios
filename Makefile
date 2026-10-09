@@ -23,6 +23,7 @@ export TZ ?= $(if $(TZ_DETECT),$(TZ_DETECT),UTC)
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
 export PORT DATA_PATH INBOX_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
+export WHATSAPP_CHATS WHATSAPP_BACKLOG_MIN BACKGROUND_ENABLED BACKGROUND_IDLE_MIN BACKGROUND_QUIT_DOCKER
 
 help: ## Muestra esta ayuda
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[1mmake %-8s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

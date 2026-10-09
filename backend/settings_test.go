@@ -107,3 +107,22 @@ func TestWhatsAppStatusFreshnessAndDetect(t *testing.T) {
 		t.Fatalf("falta el fichero de detección: %v %q", err, b)
 	}
 }
+
+func TestSettingsDefaultsFromEnv(t *testing.T) {
+	t.Setenv("WHATSAPP_CHATS", "111@g.us, 222@lid")
+	t.Setenv("WHATSAPP_BACKLOG_MIN", "30")
+	t.Setenv("BACKGROUND_ENABLED", "1")
+	t.Setenv("BACKGROUND_IDLE_MIN", "5")
+	s := defaultSettings()
+	if s.WhatsApp.Mode != "chats" || len(s.WhatsApp.Chats) != 2 || s.WhatsApp.Chats[1] != "222@lid" || s.WhatsApp.BacklogMin != 30 || !s.Background.Enabled || s.Background.IdleMin != 5 {
+		t.Fatalf("no tomó el .env: %+v", s)
+	}
+	t.Setenv("WHATSAPP_CHATS", "all")
+	if s := defaultSettings(); s.WhatsApp.Mode != "all" {
+		t.Fatalf("all: %+v", s.WhatsApp)
+	}
+	t.Setenv("WHATSAPP_CHATS", "a;rm -rf /") // inválido: se ignora el .env entero
+	if s := defaultSettings(); s.WhatsApp.Mode != "off" || s.Background.Enabled {
+		t.Fatalf("inválido: %+v", s)
+	}
+}

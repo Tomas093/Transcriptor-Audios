@@ -14,8 +14,9 @@ import (
 )
 
 // Ajustes que se cambian desde la web. Se guardan en <DATA_DIR>/settings.json y, además, en
-// <DATA_DIR>/whatsapp.conf (CLAVE=valor), que es lo que lee el script nativo de macOS
-// (scripts/whatsapp.sh) porque la app corre en Docker y no puede mirar la carpeta de WhatsApp.
+// <DATA_DIR>/whatsapp.conf (CLAVE=valor), que es lo que lee el vigilante nativo (scripts/whatsapp.sh
+// en macOS, scripts/transcriptor.ps1 en Windows) porque la app corre en Docker y no puede mirar la
+// carpeta de WhatsApp.
 type Settings struct {
 	WhatsApp   WhatsAppSettings   `json:"whatsapp"`
 	Background BackgroundSettings `json:"background"`
@@ -33,11 +34,32 @@ type BackgroundSettings struct {
 	QuitDocker bool `json:"quitDocker"` // al apagar, cerrar también Docker Desktop (solo si no hay otros contenedores)
 }
 
+// defaultSettings son los ajustes mientras no se guarde nada desde la web: los del .env
+// (WHATSAPP_CHATS = all | id,id,… ; WHATSAPP_BACKLOG_MIN; BACKGROUND_*), o los de siempre si no hay.
 func defaultSettings() Settings {
-	return Settings{
-		WhatsApp:   WhatsAppSettings{Mode: "off", Chats: []string{}, BacklogMin: 60},
-		Background: BackgroundSettings{IdleMin: 10},
+	s := Settings{
+		WhatsApp: WhatsAppSettings{Mode: "off", Chats: []string{}, BacklogMin: envInt("WHATSAPP_BACKLOG_MIN", 60)},
+		Background: BackgroundSettings{
+			Enabled:    os.Getenv("BACKGROUND_ENABLED") == "1",
+			IdleMin:    envInt("BACKGROUND_IDLE_MIN", 10),
+			QuitDocker: os.Getenv("BACKGROUND_QUIT_DOCKER") == "1",
+		},
 	}
+	switch chats := strings.ReplaceAll(os.Getenv("WHATSAPP_CHATS"), " ", ""); chats {
+	case "":
+	case "all":
+		s.WhatsApp.Mode = "all"
+	default:
+		s.WhatsApp.Mode = "chats"
+		s.WhatsApp.Chats = strings.Split(chats, ",")
+	}
+	if s.validate() != nil {
+		return Settings{
+			WhatsApp:   WhatsAppSettings{Mode: "off", Chats: []string{}, BacklogMin: 60},
+			Background: BackgroundSettings{IdleMin: 10},
+		}
+	}
+	return s
 }
 
 var chatIDRe = regexp.MustCompile(`^[A-Za-z0-9._@-]{1,80}$`)
