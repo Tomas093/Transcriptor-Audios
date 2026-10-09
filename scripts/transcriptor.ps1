@@ -26,6 +26,7 @@ function Cfg([string]$name, $def) {
 $Root         = Split-Path -Parent $PSScriptRoot
 $Port         = Cfg 'PORT' '4747'
 $DataPath     = Cfg 'DATA_PATH' (Join-Path $env:USERPROFILE 'TranscriptorAudios')
+$InboxPath    = Cfg 'INBOX_PATH' (Join-Path $DataPath 'entrada')   # carpeta vigilada
 $StateDir     = Cfg 'TRANSCRIPTOR_HOME' (Join-Path $env:USERPROFILE '.transcriptor')
 $OllamaModel  = Cfg 'OLLAMA_MODEL' 'qwen2.5:7b'
 $ModelFile    = Cfg 'WHISPER_MODEL_FILE' 'ggml-large-v3.bin'
@@ -115,7 +116,7 @@ function IanaTz {
 }
 
 function ComposeEnv {
-  $env:PORT = $Port; $env:DATA_PATH = $DataPath; $env:OLLAMA_MODEL = $OllamaModel; $env:RETENTION_DAYS = $Retention
+  $env:PORT = $Port; $env:DATA_PATH = $DataPath; $env:INBOX_PATH = $InboxPath; $env:OLLAMA_MODEL = $OllamaModel; $env:RETENTION_DAYS = $Retention
   $env:WHISPER_PORT = $WhisperPort; $env:OLLAMA_PORT = $OllamaPort; $env:TZ = IanaTz
 }
 function Compose {
@@ -270,6 +271,7 @@ function Cmd-Help {
   Write-Host '  setup    Instala y descarga todo lo necesario (una sola vez)'
   Write-Host '  up       Levanta todo (Whisper + Ollama nativos y la app en Docker)'
   Write-Host '  down     Baja todo y libera la memoria'
+  Write-Host '  entrada  Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)'
   Write-Host '  status   Estado de los servicios'
   Write-Host '  logs     Logs de la app (Ctrl+C para salir)'
   Write-Host '  doctor   Diagnóstico + prueba real con voz generada (pega la salida si algo falla)'
@@ -317,7 +319,7 @@ function Cmd-Setup {
 
 function Cmd-Up {
   DockerReady
-  New-Item -ItemType Directory -Force $DataPath | Out-Null
+  New-Item -ItemType Directory -Force $DataPath, $InboxPath | Out-Null
   # Otro programa en el puerto (p. ej. Apache de XAMPP): mejor avisar que dejar fallar a Docker.
   foreach ($c in (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
     $owner = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
@@ -329,7 +331,13 @@ function Cmd-Up {
   Start-Ollama
   Compose up -d --build; Check 'docker compose up'
   Write-Host ''; Write-Host "Transcriptor listo en http://localhost:$Port   (tus sesiones: $DataPath)"
+  Write-Host "Carpeta de entrada: $InboxPath   (todo audio que sueltes ahí se procesa solo; .\transcriptor.cmd entrada la abre)"
   Start-Process "http://localhost:$Port"
+}
+
+function Cmd-Entrada {
+  New-Item -ItemType Directory -Force $InboxPath | Out-Null
+  Start-Process explorer.exe $InboxPath
 }
 
 function Cmd-Down {
@@ -478,7 +486,7 @@ function Cmd-Dev {
   if (-not (Has 'ffmpeg')) { Write-Host 'Aviso: sin ffmpeg en el PATH no se pueden convertir audios (winget install Gyan.FFmpeg).' -ForegroundColor Yellow }
   # La web va en otra ventana; al cortar la API con Ctrl+C se cierra también.
   $web = Start-Process cmd.exe -ArgumentList '/c', 'npm install --no-audit --no-fund && npm run dev' -WorkingDirectory (Join-Path $Root 'web') -PassThru
-  $env:DATA_DIR = $DataPath; $env:WEB_DIR = '..\web\dist'; $env:TMP_DIR = Join-Path ([IO.Path]::GetTempPath()) 'transcriptor'
+  $env:DATA_DIR = $DataPath; $env:INBOX_DIR = $InboxPath; $env:WEB_DIR = '..\web\dist'; $env:TMP_DIR = Join-Path ([IO.Path]::GetTempPath()) 'transcriptor'
   $env:WHISPER_URL = "http://127.0.0.1:$WhisperPort"; $env:OLLAMA_URL = "http://127.0.0.1:$OllamaPort"; $env:ADDR = "127.0.0.1:$Port"
   Push-Location (Join-Path $Root 'backend')
   try { go run . } finally { Pop-Location; Quiet "taskkill /PID $($web.Id) /T /F" | Out-Null }
@@ -488,6 +496,7 @@ switch ($Command) {
   'setup'  { Cmd-Setup }
   'up'     { Cmd-Up }
   'down'   { Cmd-Down }
+  'entrada' { Cmd-Entrada }
   'status' { Show-Status; if ((Has 'docker') -and (Quiet 'docker info')) { Compose ps --format 'app: {{.State}} ({{.Status}})' } }
   'logs'   { Compose logs -f --tail=100 app }
   'doctor' { Cmd-Doctor }

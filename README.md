@@ -93,7 +93,7 @@ Al iniciar sesión abre Docker Desktop si hace falta, espera a que esté listo y
 
 ### Carpeta de entrada (sin abrir la web)
 
-Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `make entrada`). **Todo audio que dejes ahí se procesa solo**, sin tener que abrir la web ni arrastrar nada:
+Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `make entrada`; en Windows, `%USERPROFILE%\TranscriptorAudios\entrada` y `.\transcriptor.cmd entrada`). **Todo audio que dejes ahí se procesa solo**, sin tener que abrir la web ni arrastrar nada:
 
 - Guarda los audios de WhatsApp directamente ahí (clic derecho → *Guardar como…* → carpeta `entrada`), o cámbiale al navegador la carpeta de descargas.
 - Los audios que llegan con menos de 10 minutos de diferencia se agrupan en **una sola sesión** ("Entrada 05/10 19:30"), con su resumen general. Pasados 10 minutos se crea una sesión nueva.
