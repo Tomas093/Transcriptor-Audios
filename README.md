@@ -102,6 +102,7 @@ Variables del backend (avanzado): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocab
 - **"falta el modelo qwen2.5:7b"** → `ollama pull qwen2.5:7b`.
 - **Un audio falló** → botón *Reintentar* en ese audio (el texto ya transcrito no se pierde si solo falló el resumen).
 - Logs de los servicios nativos: `~/.transcriptor/whisper.log` y `~/.transcriptor/ollama.log` (en Windows, en `%USERPROFILE%\.transcriptor`, también `whisper.err.log` y `ollama.err.log`).
+- **"El puerto 8080 ya lo usa otro programa"** (p. ej. Apache de XAMPP) → usa otro: `.\transcriptor.cmd up PORT=8090` (y lo mismo en `doctor`/`bench`).
 - **Windows: "Docker Desktop no está en marcha"** → ábrelo y espera a *Engine running*.
 - **Windows: whisper-server con CUDA no arranca** (driver de NVIDIA antiguo) → `setup` pasa solo a la versión para CPU; también puedes actualizar el driver o forzarla con `.\transcriptor.cmd setup WHISPER_GPU=cpu`.
 - **Windows: `doctor` no comprueba el texto** → no tienes una voz de Windows en español (Configuración → Hora e idioma → Voz → Agregar voces).
@@ -125,12 +126,10 @@ Probado de punta a punta:
 - **Contra el `whisper-server` real** (whisper.cpp 1.9.4, compilado desde el código fuente, en CPU y con un modelo de pruebas): el cliente, el formato de la petición (`/inference`, `language`, `prompt`, `carry_initial_prompt`, `response_format`) y los flags del script (`-m --host --port -t -fa`) funcionan; `scripts/services.sh` y `scripts/bench.sh` también.
 - **Docker**: la imagen corre con sistema de ficheros de solo lectura y usuario sin privilegios; el flujo completo en navegador (claro, oscuro, móvil, errores y reintentos) sin errores y con auditoría de accesibilidad (axe) sin violaciones.
 
-- **Windows** (Windows 11, Docker Desktop 28, PowerShell 5.1): `transcriptor.cmd` (ayuda, `status`, `down`); el contenedor llega a servicios del host en `127.0.0.1` vía `host.docker.internal`; el volumen con ruta de Windows, la zona horaria detectada, la voz en español para `doctor` y la elección del binario de whisper.cpp (CUDA / BLAS) desde las releases de GitHub. Los servicios en segundo plano siguen vivos al cerrar la terminal y corren con prioridad baja.
+- **Windows, de punta a punta** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Docker Desktop 28, PowerShell 5.1): `setup` (Ollama por winget, whisper.cpp con CUDA, modelos), `up` y `doctor` con **RESULTADO: OK**. Whisper usa la GPU por CUDA; transcripción exacta de los audios de prueba, resúmenes por audio y general, 3 subidas simultáneas y detección de duplicados. Tiempos: 76 s para los 2 audios cortos con los modelos en frío (incluye cargar `qwen2.5:7b`) y 42 s para 3 audios largos en paralelo; picos de 71 % de CPU, 1,2 GB de RAM y la GPU al 99 % (3,8 GB de VRAM de 4).
 
 **No se pudo verificar fuera de un Mac real:**
 
 - La aceleración con Metal, los **tiempos y el consumo reales** (`make doctor` lo comprueba de una vez; `make bench FILE=audio.opus` mide con un audio tuyo) y la calidad de transcripción con `large-v3-turbo`.
 - El resumen con Ollama + `qwen2.5:7b` (se probó contra un servidor que imita su API `/api/chat`).
 - Que Homebrew instale el binario `whisper-server`. `make setup` lo comprueba y, si falta, te da los comandos para compilarlo (`WHISPER_BIN=…`).
-
-**Pendiente en Windows:** un `setup` + `doctor` completos con los modelos reales (~6 GB de descarga), para medir tiempos y confirmar que el binario con CUDA arranca con el driver instalado.

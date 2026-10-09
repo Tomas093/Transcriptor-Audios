@@ -318,6 +318,13 @@ function Cmd-Setup {
 function Cmd-Up {
   DockerReady
   New-Item -ItemType Directory -Force $DataPath | Out-Null
+  # Otro programa en el puerto (p. ej. Apache de XAMPP en el 8080): mejor avisar que dejar fallar a Docker.
+  foreach ($c in (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
+    $owner = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+    if ($owner -and $owner.ProcessName -notmatch 'docker|wslrelay|vpnkit') {
+      Fail "El puerto $Port ya lo usa otro programa ($($owner.ProcessName), PID $($owner.Id)). Usa otro: .\transcriptor.cmd up PORT=8090"
+    }
+  }
   if (-not (Start-Whisper)) { exit 1 }
   Start-Ollama
   Compose up -d --build; Check 'docker compose up'
