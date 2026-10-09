@@ -373,6 +373,119 @@ function Cmd-WhatsAppDiag {
   Write-Host 'con esa ruta se puede poner WHATSAPP_MEDIA=… en el .env y el agente lo copiará solo.'
 }
 
+# Spike: ¿guarda la app de WhatsApp de este PC los audios en el disco, y dónde? Guía al usuario para que
+# reciba y reproduzca un audio, y luego busca en las carpetas de WhatsApp (también en el caché de la app
+# nueva, que es WhatsApp Web dentro de WebView2) archivos nuevos que sean audio, o que lleven uno dentro
+# (un flujo Ogg/Opus, que es como WhatsApp manda las notas de voz). Si lo encuentra, lo extrae a
+# %TEMP%\transcriptor-spike para escucharlo. Solo lee: no cambia nada de WhatsApp.
+function Find-OggStreams([byte[]]$b) {
+  # Devuelve [inicio, fin) de cada flujo Ogg: páginas «OggS» seguidas hasta la última (EOS), la que empieza
+  # otro flujo (BOS) o lo que no sea una página. (WhatsApp no marca EOS en sus notas de voz.)
+  $out = @()
+  $txt = [Text.Encoding]::GetEncoding(28591).GetString($b) # 1 byte = 1 carácter, para buscar con IndexOf
+  $i = $txt.IndexOf('OggS', [StringComparison]::Ordinal)
+  while ($i -ge 0 -and $i + 27 -le $b.Length) {
+    $start = $i; $pos = $i
+    while ($pos + 27 -le $b.Length -and $txt.Substring($pos, 4) -eq 'OggS') {
+      $n = $b[$pos + 26]
+      if ($pos + 27 + $n -gt $b.Length) { break }
+      $len = 27 + $n
+      for ($k = 0; $k -lt $n; $k++) { $len += $b[$pos + 27 + $k] }
+      if ($pos + $len -gt $b.Length) { break }
+      $flags = $b[$pos + 5]
+      if (($flags -band 2) -and $pos -gt $start) { break } # BOS: empieza otro flujo
+      $pos += $len
+      if ($flags -band 4) { break } # EOS: última página
+    }
+    if ($pos -gt $start) { $out += , @($start, $pos) }
+    $i = $txt.IndexOf('OggS', [Math]::Max($pos, $i + 1), [StringComparison]::Ordinal)
+  }
+  return $out
+}
+
+function Cmd-WhatsAppSpike {
+  $outDir = Join-Path ([IO.Path]::GetTempPath()) 'transcriptor-spike'
+  New-Item -ItemType Directory -Force $outDir | Out-Null
+  Write-Host '== WhatsApp de este PC'
+  if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) {
+    $pkgs = @(Get-AppxPackage -Name '*WhatsApp*' -ErrorAction SilentlyContinue)
+    foreach ($p in $pkgs) { Write-Host "  $($p.Name) $($p.Version)" }
+    if (-not $pkgs) { Write-Host '  (no hay WhatsApp de la Microsoft Store)' }
+  }
+  $roots = @()
+  foreach ($pkg in (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -Filter '*WhatsApp*' -ErrorAction SilentlyContinue)) { $roots += $pkg.FullName }
+  foreach ($d in @((Join-Path $env:LOCALAPPDATA 'WhatsApp'), (Join-Path $env:APPDATA 'WhatsApp'), (Join-Path $env:USERPROFILE 'Downloads'))) { if (Test-Path $d) { $roots += $d } }
+  foreach ($r in $roots) { Write-Host "  carpeta: $r" }
+
+  if ($env:MIN) { $t0 = (Get-Date).AddMinutes(-[int]$env:MIN) } # sin preguntas: lo de los últimos MIN minutos
+  else {
+    Write-Host ''
+    Read-Host 'Paso 1. Abre WhatsApp en este PC y pulsa Enter'
+    $t0 = (Get-Date).AddSeconds(-2)
+    Write-Host 'Paso 2. Haz que te llegue un audio NUEVO (por ejemplo, reenvíate uno desde el móvil a cualquier chat).'
+    Read-Host '        En WhatsApp de este PC, ábrelo y dale play hasta el final. Luego pulsa Enter'
+  }
+
+  Write-Host "== Archivos nuevos o cambiados desde las $($t0.ToString('HH:mm:ss'))"
+  $files = foreach ($r in $roots) {
+    Get-ChildItem $r -Recurse -File -Force -ErrorAction SilentlyContinue |
+      Where-Object { ($_.CreationTime -ge $t0 -or $_.LastWriteTime -ge $t0) -and $_.Length -gt 0 -and $_.Length -lt 50MB }
+  }
+  $plain = @(); $carved = @(); $downloaded = @(); $n = 0
+  $dl = Join-Path $env:USERPROFILE 'Downloads'
+  foreach ($f in ($files | Sort-Object LastWriteTime)) {
+    try { $b = [IO.File]::ReadAllBytes($f.FullName) } catch { Write-Host "  (no se pudo leer) $($f.FullName)"; continue }
+    $magic = ''
+    if ($b.Length -ge 12) {
+      $h = [Text.Encoding]::GetEncoding(28591).GetString($b, 0, 12)
+      if ($h.StartsWith('OggS')) { $magic = 'Ogg' } elseif ($h.Substring(4, 4) -eq 'ftyp') { $magic = 'MP4/M4A' }
+      elseif ($h.StartsWith('ID3')) { $magic = 'MP3' } elseif ($h.StartsWith('RIFF')) { $magic = 'WAV' }
+    }
+    $streams = @(Find-OggStreams $b)
+    $tag = if ($magic) { "[$magic]" } elseif ($streams.Count) { '[Ogg dentro]' } else { '' }
+    Write-Host ("  {0,10:N0} B {1,-13} {2}" -f $f.Length, $tag, $f.FullName)
+    $inCache = $f.FullName -match 'EBWebView|Cache'
+    if ($magic -and -not $inCache) {
+      if ($f.FullName.StartsWith($dl)) { $downloaded += $f.FullName } else { $plain += $f.FullName }
+      continue
+    }
+    foreach ($st in $streams) {
+      $len = $st[1] - $st[0]
+      $txt = [Text.Encoding]::GetEncoding(28591).GetString($b, $st[0], [Math]::Min($len, 200))
+      if ($txt.IndexOf('OpusHead', [StringComparison]::Ordinal) -lt 0) { continue } # solo audio Opus
+      $n++; $dst = Join-Path $outDir "audio-$n.opus"
+      $seg = New-Object byte[] $len; [Array]::Copy($b, $st[0], $seg, 0, $len)
+      [IO.File]::WriteAllBytes($dst, $seg)
+      $carved += "$dst  ($len B; sacado de $($f.FullName))"
+    }
+  }
+  if (-not $files) { Write-Host '  (ninguno)' }
+
+  Write-Host ''
+  Write-Host '== RESULTADO'
+  if ($plain) {
+    Write-Host 'SÍ: WhatsApp guarda audios como archivos normales:' -ForegroundColor Green
+    $plain | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Pon su carpeta en el .env como WHATSAPP_MEDIA=... y WHATSAPP_CHATS=all; el agente los copiará solo."
+  }
+  if ($carved) {
+    Write-Host 'SÍ, DENTRO DEL CACHÉ: el audio está guardado dentro de archivos del caché de WhatsApp. Los saqué a:' -ForegroundColor Yellow
+    $carved | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Ábrelos (doble clic o arrástralos a la web del Transcriptor) y comprueba que es el audio que acabas de escuchar."
+  }
+  if ($downloaded) {
+    Write-Host 'En Descargas hay audios nuevos (los descargaste tú desde WhatsApp):' -ForegroundColor Green
+    $downloaded | ForEach-Object { Write-Host "  $_" }
+    Write-Host 'Eso ya sirve: guárdalos en la carpeta entrada (o mueve ahí) y se procesan solos.'
+  }
+  if (-not $plain -and -not $carved) {
+    Write-Host 'NO: no encontré el audio en el disco. Esta versión de WhatsApp no lo deja en un archivo legible.' -ForegroundColor Red
+    Write-Host 'Alternativa: en WhatsApp, clic derecho sobre el audio → Descargar / Guardar como → carpeta entrada; el agente hace el resto.'
+  }
+  Write-Host ''
+  Write-Host 'Pega todo esto (desde «== WhatsApp de este PC») a quien te ayuda.'
+}
+
 function Read-Conf {
   $c = @{ WHATSAPP_MODE = ''; WHATSAPP_CHATS = (Cfg 'WHATSAPP_CHATS' ''); WHATSAPP_BACKLOG_MIN = (Cfg 'WHATSAPP_BACKLOG_MIN' '60')
           BACKGROUND_ENABLED = (Cfg 'BACKGROUND_ENABLED' '0'); BACKGROUND_IDLE_MIN = (Cfg 'BACKGROUND_IDLE_MIN' '10'); BACKGROUND_QUIT_DOCKER = (Cfg 'BACKGROUND_QUIT_DOCKER' '0') }
@@ -537,6 +650,7 @@ function Cmd-Help {
   Write-Host '  entrada  Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)'
   Write-Host '  agente   Vigilante en segundo plano: enciende todo cuando llega un audio y lo apaga solo (agente-off lo quita)'
   Write-Host '  whatsapp-diagnostico  Muestra dónde guarda WhatsApp los audios (ejecútalo justo después de recibir uno)'
+  Write-Host '  whatsapp-spike        Prueba guiada: recibe y escucha un audio, y te dice si (y dónde) WhatsApp lo guarda'
   Write-Host '  status   Estado de los servicios'
   Write-Host '  logs     Logs de la app (Ctrl+C para salir)'
   Write-Host '  doctor   Diagnóstico + prueba real con voz generada (pega la salida si algo falla)'
@@ -767,6 +881,7 @@ switch ($Command) {
   'agente-off' { Cmd-AgenteOff }
   'vigilar-agente' { Cmd-VigilarAgente }
   'whatsapp-diagnostico' { Cmd-WhatsAppDiag }
+  'whatsapp-spike' { Cmd-WhatsAppSpike }
   'status' { Show-Status; if ((Has 'docker') -and (Quiet 'docker info')) { Compose ps --format 'app: {{.State}} ({{.Status}})' } }
   'logs'   { Compose logs -f --tail=100 app }
   'doctor' { Cmd-Doctor }

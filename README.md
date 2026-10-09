@@ -140,13 +140,18 @@ y en **Configuración → Segundo plano** activa *Escuchar en segundo plano*. En
 
 La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una ventana (WebView2) y **puede que no guarde los audios como archivos**. Por eso en Windows hay dos piezas:
 
-1. **Averiguar si tu WhatsApp guarda los audios** (solo mira, no cambia nada). Recibe o reenvíate un audio, y enseguida:
+1. **Averiguar si tu WhatsApp guarda los audios** (prueba guiada de 2 minutos; solo lee, no cambia nada):
 
    ```powershell
-   .\transcriptor.cmd whatsapp-diagnostico
+   .\transcriptor.cmd whatsapp-spike
    ```
 
-   Lista los archivos nuevos de las carpetas de WhatsApp y de Descargas. Si aparece el audio (`.opus`, `.ogg`…), pon su carpeta en el `.env` como `WHATSAPP_MEDIA=...` (la de la app antigua, `...\LocalState\shared\transfers`, se detecta sola) y `WHATSAPP_CHATS=all`. En Windows no hay forma fiable de saber de qué chat es cada audio, así que se copian **todos**.
+   Te pide que te llegue un audio nuevo (por ejemplo, reenviándotelo desde el móvil) y que lo escuches en WhatsApp del PC. Después busca en las carpetas de WhatsApp, **también dentro del caché de la app nueva**, y termina con un **RESULTADO**:
+   - **SÍ** (archivos normales): pon su carpeta en el `.env` como `WHATSAPP_MEDIA=...` y `WHATSAPP_CHATS=all`; el agente los copiará solo.
+   - **SÍ, DENTRO DEL CACHÉ**: saca el audio a `%TEMP%\transcriptor-spike\audio-1.opus` para que compruebes que es el que escuchaste. Pásale la salida a quien mantiene el proyecto: copiarlos solos desde el caché aún no está hecho.
+   - **NO**: esta versión no lo deja en el disco; usa *Descargar / Guardar como* → carpeta `entrada` (punto 2).
+
+   En Windows no hay forma fiable de saber de qué chat es cada audio, así que se copian **todos**. (`.\transcriptor.cmd whatsapp-diagnostico` es la versión rápida: solo lista los archivos nuevos de los últimos 15 minutos.)
 
 2. **El agente en segundo plano** (no necesita permisos de administrador):
 
@@ -161,7 +166,7 @@ La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una
    - No usa CPU mientras espera (lo despierta Windows cuando aparece un archivo), pero PowerShell ocupa unas decenas de MB de memoria.
    - Registro: `%USERPROFILE%\.transcriptor\agente.log`.
 
-> **Sin probar en un Windows real todavía:** el agente y `whatsapp-diagnostico` se probaron en macOS con PowerShell 7 (copia, filtro por tipo de archivo, detección y que un error no lo tire), no con Windows PowerShell 5.1 ni con Docker Desktop de Windows. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
+> **Sin probar en un Windows real todavía:** el agente, `whatsapp-spike` y `whatsapp-diagnostico` se probaron en macOS con PowerShell 7 (copia, filtro por tipo de archivo, detección, que un error no lo tire, y extracción de audios reales de WhatsApp metidos en archivos de caché simulados, byte a byte iguales), no con Windows PowerShell 5.1, ni con la app real de WhatsApp para Windows, ni con Docker Desktop de Windows. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
 
 ### Sesiones
 
@@ -218,6 +223,7 @@ En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart`, `s
 | `make up` / `make down` | Levanta / apaga todo |
 | `make entrada` | Abre la carpeta de entrada |
 | `make agente` / `make agente-off` | Instala / quita el vigilante en segundo plano que enciende todo cuando llega un audio (se configura en la web o en el `.env`) |
+| `.\transcriptor.cmd whatsapp-spike` | Solo Windows: prueba guiada que dice si (y dónde) WhatsApp guarda los audios, y los extrae si están en su caché |
 | `.\transcriptor.cmd whatsapp-diagnostico` | Solo Windows: muestra dónde guarda WhatsApp los audios (ejecútalo justo después de recibir uno) |
 | `make whatsapp-estado` | Muestra qué audios de WhatsApp vigila y si tiene permiso |
 | `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
