@@ -1,5 +1,6 @@
-# La app (API en Go + web en React) corre aquí. Whisper y Ollama corren NATIVOS en el Mac
-# (con la GPU vía Metal), porque Docker en macOS no puede usar la GPU de Apple.
+# La app (API en Go + web en React) corre aquí. Whisper y Ollama corren NATIVOS (Metal en Mac,
+# CUDA en Windows con NVIDIA), porque Docker en macOS no puede usar la GPU de Apple y en Windows
+# es más simple y rápido así. Lo arrancan `make up` (macOS) o `transcriptor.cmd up` (Windows).
 name: transcriptor
 
 services:
@@ -10,7 +11,7 @@ services:
     restart: "no"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
-      - "127.0.0.1:${PORT:-4747}:8080" # solo accesible desde tu Mac
+      - "127.0.0.1:${PORT:-4747}:8080" # solo accesible desde tu equipo
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
