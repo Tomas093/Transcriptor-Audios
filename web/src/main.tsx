@@ -2,6 +2,7 @@ import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
+import "./styles/win95.css";
 
 class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -24,6 +25,7 @@ class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
     );
   }
 }
+
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

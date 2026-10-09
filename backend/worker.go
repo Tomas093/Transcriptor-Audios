@@ -111,6 +111,9 @@ func (w *Worker) transcribe(ctx context.Context, sessionID, itemID string) {
 	w.setItem(sessionID, itemID, func(_ *Session, it *Item) { it.Status, it.Error = StatusConverting, "" })
 
 	fail := func(err error) {
+		if errors.Is(err, context.Canceled) {
+			return // apagado en curso: queda pendiente y se reanuda al volver a arrancar
+		}
 		slog.Warn("falló la transcripción", "session", sessionID, "item", itemID, "err", err)
 		w.setItem(sessionID, itemID, func(_ *Session, it *Item) { it.Status, it.Error = StatusError, err.Error() })
 	}
@@ -200,6 +203,9 @@ func (w *Worker) summarizeItem(ctx context.Context, sessionID, itemID string) {
 	cancel()
 	if err == nil && summary == "" {
 		err = errors.New("el modelo devolvió un resumen vacío")
+	}
+	if errors.Is(err, context.Canceled) {
+		return // apagado en curso: se reanuda al volver a arrancar
 	}
 	if err != nil {
 		slog.Warn("falló el resumen", "session", sessionID, "item", itemID, "err", err)

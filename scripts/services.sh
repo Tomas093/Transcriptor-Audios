@@ -4,7 +4,7 @@
 set -euo pipefail
 
 STATE_DIR="${TRANSCRIPTOR_HOME:-$HOME/.transcriptor}"
-MODEL_FILE="${WHISPER_MODEL_FILE:-ggml-large-v3-turbo-q5_0.bin}"
+MODEL_FILE="${WHISPER_MODEL_FILE:-ggml-large-v3.bin}"
 MODEL="$STATE_DIR/models/$MODEL_FILE"
 WHISPER_PORT="${WHISPER_PORT:-8178}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
@@ -18,6 +18,10 @@ up() { curl -fsS -m 2 -o /dev/null "$1" 2>/dev/null; }
 wait_for() { # url, segundos
   local i; for ((i = 0; i < $2; i++)); do up "$1" && return 0; sleep 1; done; return 1
 }
+# Lanza un proceso en su propia sesión (setsid, vía perl, que viene con macOS): así sigue
+# vivo aunque quien lo lanzó termine (por ejemplo, el ícono de doble clic).
+# (Array y no función: así $! es el pid real del servicio y `stop` lo puede parar.)
+DETACH=(nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "$!"' --)
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 start_whisper() {
@@ -28,7 +32,7 @@ start_whisper() {
   echo "  (al arrancar, Metal compila sus kernels de GPU: puede tardar unos 15 s; es normal)"
   # nice: prioridad baja, así el Mac sigue fluido mientras transcribe.
   # shellcheck disable=SC2086  # WHISPER_FLAGS son varios flags a propósito
-  nohup nice -n 10 "$WHISPER_BIN" -m "$MODEL" --host 127.0.0.1 --port "$WHISPER_PORT" -t "$WHISPER_THREADS" $WHISPER_FLAGS \
+  "${DETACH[@]}" nice -n 10 "$WHISPER_BIN" -m "$MODEL" --host 127.0.0.1 --port "$WHISPER_PORT" -t "$WHISPER_THREADS" $WHISPER_FLAGS \
     >>"$STATE_DIR/whisper.log" 2>&1 &
   echo $! >"$STATE_DIR/whisper.pid"
   wait_for "http://127.0.0.1:$WHISPER_PORT/" 90 || { echo "whisper-server no arrancó; mira $STATE_DIR/whisper.log" >&2; exit 1; }
@@ -40,7 +44,7 @@ start_ollama() {
   echo "Arrancando Ollama…"
   # Un solo modelo en memoria, sin paralelismo y descarga rápida cuando no se usa.
   OLLAMA_KEEP_ALIVE=30s OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_NUM_PARALLEL=1 \
-    nohup ollama serve >>"$STATE_DIR/ollama.log" 2>&1 &
+    "${DETACH[@]}" ollama serve >>"$STATE_DIR/ollama.log" 2>&1 &
   echo $! >"$STATE_DIR/ollama.pid"
   wait_for "http://127.0.0.1:$OLLAMA_PORT/api/tags" 30 || { echo "Ollama no arrancó; mira $STATE_DIR/ollama.log" >&2; exit 1; }
 }

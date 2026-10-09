@@ -46,7 +46,7 @@ func (a *API) Handler() http.Handler {
 	return secure(mux, a.cfg.AllowedHosts)
 }
 
-// hostName devuelve el host de una cabecera Host sin el puerto ("localhost:8080" → "localhost").
+// hostName devuelve el host de una cabecera Host sin el puerto ("localhost:4747" → "localhost").
 func hostName(hostport string) string {
 	if h, _, err := net.SplitHostPort(hostport); err == nil {
 		return h
@@ -165,6 +165,9 @@ func (a *API) createSession(w http.ResponseWriter, r *http.Request) {
 		title = "Nueva sesión"
 	}
 	sess := a.store.Create(title)
+	if title != "Nueva sesión" { // un título puesto a propósito no se reemplaza por el automático
+		a.store.Update(sess.ID, func(s *Session) { s.TitleAuto = false })
+	}
 	data, _ := a.store.Snapshot(sess.ID)
 	writeRaw(w, http.StatusCreated, data)
 }
@@ -421,7 +424,9 @@ func spa(dir string) http.Handler {
 	})
 }
 
-// runRetention borra las sesiones sin actividad desde hace más de RetentionDays.
+// runRetention borra las sesiones cuya última actividad (UpdatedAt, guardada en su session.json)
+// es más antigua que maxAge. No usa ningún contador: compara fechas reales, así que funciona
+// igual aunque la app haya estado apagada. Barre al arrancar y luego cada 10 minutos.
 func runRetention(ctx context.Context, store *Store, maxAge time.Duration) {
 	if maxAge <= 0 {
 		slog.Info("borrado automático desactivado")
@@ -435,7 +440,7 @@ func runRetention(ctx context.Context, store *Store, maxAge time.Duration) {
 		}
 	}
 	sweep()
-	t := time.NewTicker(time.Hour)
+	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
 	for {
 		select {
