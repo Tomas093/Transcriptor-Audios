@@ -11,6 +11,16 @@ $ProgressPreference = 'SilentlyContinue' # la barra de progreso de PowerShell 5.
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
+# Valores fijos del fichero .env del proyecto (ver .env.example); lo de la línea de comandos manda sobre él.
+$EnvFile = Join-Path (Split-Path -Parent $PSScriptRoot) '.env'
+if (Test-Path $EnvFile) {
+  foreach ($line in (Get-Content $EnvFile -Encoding UTF8)) {
+    if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$' -and -not [Environment]::GetEnvironmentVariable($Matches[1])) {
+      Set-Item "env:$($Matches[1])" $Matches[2].Trim()
+    }
+  }
+}
+
 # VARIABLE=valor como en make; el resto son argumentos sueltos (p. ej. el audio de bench).
 $Positional = @()
 foreach ($a in $Rest) {
@@ -263,6 +273,259 @@ function WaitIdle([string]$id, [int]$seconds = 300) {
   return $false
 }
 
+# --- WhatsApp y agente en segundo plano ---
+# El agente es este mismo script en modo «vigilar-agente», sin ventana y con prioridad baja, lanzado
+# por un acceso directo en la carpeta Inicio de Windows (no necesita permisos de administrador).
+# Espera eventos del sistema de archivos (FileSystemWatcher): mientras no llega nada, no usa CPU.
+# - Carpeta de entrada: si cae un audio y todo está apagado, lo enciende (la app lo procesa sola).
+# - Carpeta de WhatsApp (WHATSAPP_MEDIA, si existe): copia a la entrada los audios nuevos.
+# Tras N minutos sin actividad apaga lo que encendió él. Escribe whatsapp-status.json para la web.
+
+$AgentPid     = Join-Path $StateDir 'agent.pid'
+$AgentLog     = Join-Path $StateDir 'agente.log'
+$AgentStarted = Join-Path $StateDir 'agent-started'
+$DockerByAgent = Join-Path $StateDir 'agent-docker'
+$StartupDir   = [Environment]::GetFolderPath('Startup') # carpeta Inicio del usuario (shell:startup)
+if (-not $StartupDir) { $StartupDir = $StateDir }
+$StartupLnk   = Join-Path $StartupDir 'Transcriptor (agente).lnk'
+$AudioExt     = @('.opus', '.ogg', '.oga', '.m4a', '.mp3', '.aac', '.wav')
+
+# Dónde puede guardar WhatsApp de escritorio los audios. La app de la Microsoft Store (UWP) los dejaba
+# en LocalState\shared\transfers; la versión nueva (WebView2, 2025) puede no guardarlos como archivos.
+function WhatsAppRoots {
+  $r = @()
+  foreach ($pkg in (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -Filter '*WhatsApp*' -ErrorAction SilentlyContinue)) {
+    $r += Join-Path $pkg.FullName 'LocalState'
+  }
+  foreach ($d in @((Join-Path $env:LOCALAPPDATA 'WhatsApp'), (Join-Path $env:APPDATA 'WhatsApp'))) { if (Test-Path $d) { $r += $d } }
+  return $r
+}
+function WhatsAppMedia {
+  if ($env:WHATSAPP_MEDIA) { return $env:WHATSAPP_MEDIA }
+  foreach ($root in (WhatsAppRoots)) {
+    $t = Join-Path $root 'shared\transfers'
+    if (Test-Path $t) { return $t }
+  }
+  return $null
+}
+
+function AgentAlive {
+  if (-not (Test-Path $AgentPid)) { return $false }
+  $id = 0; [int]::TryParse((Get-Content $AgentPid -TotalCount 1), [ref]$id) | Out-Null
+  $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+  return [bool]($p -and $p.ProcessName -match 'powershell|pwsh')
+}
+function Start-Agent-IfInstalled {
+  if ((Test-Path $StartupLnk) -and -not (AgentAlive)) {
+    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" vigilar-agente"
+  }
+}
+
+function Cmd-Agente {
+  $sh = New-Object -ComObject WScript.Shell
+  $lnk = $sh.CreateShortcut($StartupLnk)
+  $lnk.TargetPath = (Get-Command powershell.exe).Source
+  $lnk.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" vigilar-agente"
+  $lnk.WorkingDirectory = $Root
+  $lnk.WindowStyle = 7 # minimizada
+  $lnk.Description = 'Transcriptor: vigilante en segundo plano'
+  $lnk.Save()
+  Start-Agent-IfInstalled
+  Write-Host "Agente instalado: arranca solo al iniciar sesión (y ya está en marcha)."
+  Write-Host "Acceso directo: $StartupLnk"
+  $m = WhatsAppMedia
+  if ($m) { Write-Host "Carpeta de WhatsApp: $m (copia sus audios nuevos según Configuración)" }
+  else { Write-Host 'No encontré una carpeta de audios de WhatsApp: el agente vigila solo la carpeta de entrada. Ejecuta whatsapp-diagnostico justo después de recibir un audio.' }
+  Write-Host ''
+  Write-Host 'En la web: Configuración → activa «Escuchar en segundo plano». Registro: ' -NoNewline; Write-Host $AgentLog
+  Write-Host 'Quitarlo: .\transcriptor.cmd agente-off'
+}
+
+function Cmd-AgenteOff {
+  Remove-Item $StartupLnk -Force -ErrorAction SilentlyContinue
+  if (AgentAlive) { Stop-Process -Id ([int](Get-Content $AgentPid -TotalCount 1)) -Force -ErrorAction SilentlyContinue }
+  Remove-Item $AgentPid, $AgentStarted, $DockerByAgent -Force -ErrorAction SilentlyContinue
+  Write-Host 'Agente desinstalado.'
+}
+
+# Solo informa: lista los archivos que cambiaron hace poco en las carpetas de WhatsApp (y Descargas).
+function Cmd-WhatsAppDiag {
+  $min = [int](Cfg 'MIN' '15')
+  Write-Host '== WhatsApp instalado'
+  $pkgs = Get-AppxPackage -Name '*WhatsApp*' -ErrorAction SilentlyContinue
+  foreach ($p in $pkgs) { Write-Host "  $($p.Name) $($p.Version)" }
+  if (-not $pkgs) { Write-Host '  (no hay paquete de la Microsoft Store)' }
+  Write-Host "== Carpeta de audios elegida: $(WhatsAppMedia)"
+  $dl = Join-Path $env:USERPROFILE 'Downloads'
+  $since = (Get-Date).AddMinutes(-$min)
+  foreach ($root in @(WhatsAppRoots) + @($dl)) {
+    Write-Host "== Archivos nuevos o cambiados en los últimos $min min: $root"
+    $files = Get-ChildItem $root -Recurse -File -Force -ErrorAction SilentlyContinue |
+      Where-Object { $_.CreationTime -ge $since -or $_.LastWriteTime -ge $since } |
+      Sort-Object CreationTime -Descending | Select-Object -First 40
+    if (-not $files) { Write-Host '  (ninguno)'; continue }
+    foreach ($f in $files) {
+      Write-Host ("  {0,10:N0} B  creado {1:HH:mm:ss}  modif. {2:HH:mm:ss}  {3}" -f $f.Length, $f.CreationTime, $f.LastWriteTime, $f.FullName)
+    }
+  }
+  Write-Host ''
+  Write-Host 'Si entre esos archivos aparece el audio que acabas de recibir (.opus, .ogg…), pega esta salida a quien te ayuda:'
+  Write-Host 'con esa ruta se puede poner WHATSAPP_MEDIA=… en el .env y el agente lo copiará solo.'
+}
+
+function Read-Conf {
+  $c = @{ WHATSAPP_MODE = ''; WHATSAPP_CHATS = (Cfg 'WHATSAPP_CHATS' ''); WHATSAPP_BACKLOG_MIN = (Cfg 'WHATSAPP_BACKLOG_MIN' '60')
+          BACKGROUND_ENABLED = (Cfg 'BACKGROUND_ENABLED' '0'); BACKGROUND_IDLE_MIN = (Cfg 'BACKGROUND_IDLE_MIN' '10'); BACKGROUND_QUIT_DOCKER = (Cfg 'BACKGROUND_QUIT_DOCKER' '0') }
+  $c.WHATSAPP_CHATS = ($c.WHATSAPP_CHATS -replace '\s', '')
+  if ($c.WHATSAPP_CHATS -eq 'all') { $c.WHATSAPP_MODE = 'all' } elseif ($c.WHATSAPP_CHATS) { $c.WHATSAPP_MODE = 'chats' } else { $c.WHATSAPP_MODE = 'off' }
+  $f = Join-Path $DataPath 'whatsapp.conf' # lo guardado en la web manda sobre el .env
+  if (Test-Path $f) {
+    foreach ($line in (Get-Content $f)) { if ($line -match '^([A-Z_]+)=(.*)$') { $c[$Matches[1]] = $Matches[2].Trim() } }
+  }
+  $idle = 0; if (-not [int]::TryParse($c.BACKGROUND_IDLE_MIN, [ref]$idle) -or $idle -lt 1) { $idle = 10 }
+  $back = 0; if (-not [int]::TryParse($c.WHATSAPP_BACKLOG_MIN, [ref]$back) -or $back -lt 0) { $back = 60 }
+  return @{ Mode = $c.WHATSAPP_MODE; Chats = @($c.WHATSAPP_CHATS -split ',' | Where-Object { $_ }); Backlog = $back
+            Bg = ($c.BACKGROUND_ENABLED -eq '1'); Idle = $idle; QuitDocker = ($c.BACKGROUND_QUIT_DOCKER -eq '1') }
+}
+
+function Cmd-VigilarAgente {
+  if (AgentAlive) { Write-Host 'El agente ya está en marcha.'; return }
+  Set-Content $AgentPid $PID
+  try { (Get-Process -Id $PID).PriorityClass = 'BelowNormal' } catch {}
+  function Log([string]$m) { Add-Content $AgentLog "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" }
+  $statusFile = Join-Path $DataPath 'whatsapp-status.json'
+  $detectFile = Join-Path $DataPath 'whatsapp-detect'
+  $confFile = Join-Path $DataPath 'whatsapp.conf'
+  New-Item -ItemType Directory -Force $DataPath, $InboxPath | Out-Null
+  $media = WhatsAppMedia
+  if ($media -and (Test-Path $media)) { $media = (Resolve-Path $media).Path.TrimEnd('\', '/') } # rutas iguales en eventos y búsquedas
+  $st = @{ host = 'agent'; stack = 'off'; error = ''; lastChat = ''; lastAt = 0; detected = ''; detectedAt = 0; copied = 0 }
+  $script:lastBody = ''; $script:lastWrite = [datetime]::MinValue
+  $conf = Read-Conf; $confStamp = $null
+  if (Test-Path $confFile) { $confStamp = (Get-Item $confFile).LastWriteTimeUtc }
+  $lastAct = Get-Date
+  $seen = @{}
+  Log "agente en marcha → $InboxPath$(if ($media) { " · WhatsApp: $media" })"
+
+  # Eventos: entrada (no recursivo) y carpeta de WhatsApp (recursivo). Sin eventos, Wait-Event no consume CPU.
+  $wIn = New-Object IO.FileSystemWatcher $InboxPath
+  $wIn.IncludeSubdirectories = $false; $wIn.EnableRaisingEvents = $true
+  Register-ObjectEvent $wIn Created -SourceIdentifier 'inbox' | Out-Null
+  Register-ObjectEvent $wIn Renamed -SourceIdentifier 'inbox-ren' | Out-Null
+  if ($media -and (Test-Path $media)) {
+    $wMe = New-Object IO.FileSystemWatcher $media
+    $wMe.IncludeSubdirectories = $true; $wMe.EnableRaisingEvents = $true
+    Register-ObjectEvent $wMe Created -SourceIdentifier 'media' | Out-Null
+    Register-ObjectEvent $wMe Renamed -SourceIdentifier 'media-ren' | Out-Null
+  } elseif ($media) { $st.error = "No encuentro la carpeta de WhatsApp: $media" }
+
+  function StackUp { return (Up "$Base/api/health") }
+  function WriteStatus {
+    $body = ($st | ConvertTo-Json -Compress)
+    if ($body -ne $script:lastBody -or ((Get-Date) - $script:lastWrite).TotalSeconds -ge 50) {
+      $o = $st.Clone(); $o.updatedAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+      $tmp = "$statusFile.tmp"
+      [IO.File]::WriteAllText($tmp, ($o | ConvertTo-Json -Compress)); Move-Item -Force $tmp $statusFile
+      $script:lastBody = $body; $script:lastWrite = Get-Date
+    }
+  }
+  function ChatOf([string]$path) {
+    $rel = $path.Substring($media.Length).TrimStart('\', '/')
+    return ($rel -split '[\\/]')[0]
+  }
+  function Deliver([string]$src) {
+    $ext = [IO.Path]::GetExtension($src).ToLower()
+    $name = 'WhatsApp ' + (Get-Date -Format 'yyyy-MM-dd HH.mm.ss')
+    $dst = Join-Path $InboxPath "$name$ext"; $n = 1
+    while ((Test-Path $dst) -or (Test-Path (Join-Path $InboxPath "procesados\$name$ext"))) { $n++; $dst = Join-Path $InboxPath "$name ($n)$ext" }
+    $part = Join-Path $InboxPath ".$name.part"
+    Copy-Item $src $part -Force; Move-Item $part $dst -Force
+    Log "copiado: $dst"
+  }
+  function StartStack {
+    Log 'llegó un audio: enciendo todo'
+    if (-not (Quiet 'docker info')) {
+      New-Item -ItemType File -Force $DockerByAgent | Out-Null
+      $dd = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+      if (Test-Path $dd) { Start-Process $dd }
+      for ($i = 0; $i -lt 120 -and -not (Quiet 'docker info'); $i++) { Start-Sleep 2 }
+    }
+    $env:NO_OPEN = '1'
+    $p = Start-Process powershell.exe -WindowStyle Hidden -Wait -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" up" `
+      -RedirectStandardOutput (Join-Path $StateDir 'agente-up.log') -RedirectStandardError (Join-Path $StateDir 'agente-up.err.log')
+    if ($p.ExitCode -eq 0) { New-Item -ItemType File -Force $AgentStarted | Out-Null; $st.stack = 'on' }
+    else { $st.error = "No pude encender la app. Detalles: $StateDir\agente-up.log"; Log 'falló el arranque' }
+  }
+  function StopStack {
+    Log 'sin actividad: apago todo'
+    Start-Process powershell.exe -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" down" | Out-Null
+    Remove-Item $AgentStarted -Force -ErrorAction SilentlyContinue
+    if ($conf.QuitDocker -and (Test-Path $DockerByAgent) -and -not (docker ps -q 2>$null)) {
+      Log 'cierro Docker Desktop'; Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue | Stop-Process
+    }
+    Remove-Item $DockerByAgent -Force -ErrorAction SilentlyContinue
+    $st.stack = 'off'
+  }
+
+  # Al arrancar o al cambiar la configuración: audios de la carpeta de WhatsApp de los últimos N minutos.
+  function Backlog {
+    if (-not $media -or $conf.Mode -eq 'off' -or -not (Test-Path $media)) { return }
+    $since = (Get-Date).AddMinutes(-$conf.Backlog)
+    foreach ($f in (Get-ChildItem $media -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.CreationTime -ge $since -and $AudioExt -contains $_.Extension.ToLower() })) {
+      Take $f.FullName $false
+    }
+  }
+  # Un audio nuevo de WhatsApp: se copia si su chat está elegido (la fecha de creación es la de llegada,
+  # aunque al reenviar WhatsApp conserve la de modificación original).
+  function Take([string]$path, [bool]$live) {
+    if ($seen.ContainsKey($path) -or $AudioExt -notcontains [IO.Path]::GetExtension($path).ToLower()) { return }
+    $chat = ChatOf $path
+    if ($live -and (Test-Path $detectFile)) { $st.detected = $chat; $st.detectedAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
+    if ($conf.Mode -eq 'off' -or ($conf.Mode -eq 'chats' -and $conf.Chats -notcontains $chat)) { return }
+    for ($i = 0; $i -lt 20; $i++) { # espera a que WhatsApp termine de escribirlo
+      try { $s1 = (Get-Item $path).Length; Start-Sleep 1; if ($s1 -gt 0 -and $s1 -eq (Get-Item $path).Length) { break } } catch { return }
+    }
+    $seen[$path] = $true
+    try { Deliver $path; $st.copied++; $st.lastChat = $chat; $st.lastAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $script:newAudio = $true }
+    catch { Log "no pude copiar $path : $_" }
+  }
+
+  Backlog
+  try {
+    while ($true) {
+     try { # un error (Docker, la red…) se anota y el agente sigue vivo
+      $script:newAudio = $false
+      $ev = Wait-Event -Timeout 30
+      while ($ev) {
+        $full = $ev.SourceEventArgs.FullPath
+        $src = $ev.SourceIdentifier
+        Remove-Event -EventIdentifier $ev.EventIdentifier
+        if ($src -like 'media*') { Take $full $true }
+        elseif ((Split-Path -Leaf $full) -notmatch '^\.' -and $AudioExt -contains [IO.Path]::GetExtension($full).ToLower()) { $script:newAudio = $true }
+        $ev = Get-Event | Select-Object -First 1
+      }
+      if ((Test-Path $detectFile) -and ((Get-Date) - (Get-Item $detectFile).LastWriteTime).TotalMinutes -gt 3) { Remove-Item $detectFile -Force -ErrorAction SilentlyContinue }
+      $stamp = $null; if (Test-Path $confFile) { $stamp = (Get-Item $confFile).LastWriteTimeUtc }
+      if ($stamp -ne $confStamp) { $confStamp = $stamp; $conf = Read-Conf; Log "configuración: modo=$($conf.Mode) segundo plano=$($conf.Bg)"; Backlog }
+
+      if ($script:newAudio) { $lastAct = Get-Date }
+      $up = StackUp; if ($up) { $st.stack = 'on' } else { $st.stack = 'off' }
+      if ($conf.Bg) {
+        if ($script:newAudio -and -not $up) { StartStack; $lastAct = Get-Date }
+        elseif ($up -and (Test-Path $AgentStarted)) {
+          try { if (@(Api 'GET' '/api/sessions' | Where-Object { $_.busy }).Count -gt 0) { $lastAct = Get-Date } } catch {}
+          if (((Get-Date) - $lastAct).TotalMinutes -ge $conf.Idle) { StopStack }
+        }
+      }
+      WriteStatus
+     } catch { Log "error: $_"; $st.error = "$_"; WriteStatus; Start-Sleep 10 }
+    }
+  } finally {
+    Get-EventSubscriber | Unregister-Event
+    Remove-Item $AgentPid -Force -ErrorAction SilentlyContinue
+  }
+}
+
 # --- Comandos ---
 
 function Cmd-Help {
@@ -272,6 +535,8 @@ function Cmd-Help {
   Write-Host '  up       Levanta todo (Whisper + Ollama nativos y la app en Docker)'
   Write-Host '  down     Baja todo y libera la memoria'
   Write-Host '  entrada  Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)'
+  Write-Host '  agente   Vigilante en segundo plano: enciende todo cuando llega un audio y lo apaga solo (agente-off lo quita)'
+  Write-Host '  whatsapp-diagnostico  Muestra dónde guarda WhatsApp los audios (ejecútalo justo después de recibir uno)'
   Write-Host '  status   Estado de los servicios'
   Write-Host '  logs     Logs de la app (Ctrl+C para salir)'
   Write-Host '  doctor   Diagnóstico + prueba real con voz generada (pega la salida si algo falla)'
@@ -332,7 +597,8 @@ function Cmd-Up {
   Compose up -d --build; Check 'docker compose up'
   Write-Host ''; Write-Host "Transcriptor listo en http://localhost:$Port   (tus sesiones: $DataPath)"
   Write-Host "Carpeta de entrada: $InboxPath   (todo audio que sueltes ahí se procesa solo; .\transcriptor.cmd entrada la abre)"
-  Start-Process "http://localhost:$Port"
+  Start-Agent-IfInstalled
+  if (-not $env:NO_OPEN) { Start-Process "http://localhost:$Port" }
 }
 
 function Cmd-Entrada {
@@ -497,6 +763,10 @@ switch ($Command) {
   'up'     { Cmd-Up }
   'down'   { Cmd-Down }
   'entrada' { Cmd-Entrada }
+  'agente' { Cmd-Agente }
+  'agente-off' { Cmd-AgenteOff }
+  'vigilar-agente' { Cmd-VigilarAgente }
+  'whatsapp-diagnostico' { Cmd-WhatsAppDiag }
   'status' { Show-Status; if ((Has 'docker') -and (Quiet 'docker info')) { Compose ps --format 'app: {{.State}} ({{.Status}})' } }
   'logs'   { Compose logs -f --tail=100 app }
   'doctor' { Cmd-Doctor }
