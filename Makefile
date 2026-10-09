@@ -5,12 +5,12 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 # --- Configuración (se puede cambiar: make up OLLAMA_MODEL=qwen2.5:3b) ---
-PORT            ?= 8080
+PORT            ?= 4747
 DATA_PATH       ?= $(HOME)/TranscriptorAudios
 OLLAMA_MODEL    ?= qwen2.5:7b
-WHISPER_MODEL_FILE ?= ggml-large-v3-turbo-q5_0.bin
+WHISPER_MODEL_FILE ?= ggml-large-v3.bin
 WHISPER_THREADS ?= 4
-RETENTION_DAYS  ?= 7
+RETENTION_DAYS  ?= 1
 STATE_DIR       ?= $(HOME)/.transcriptor
 MODEL_URL       := https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$(WHISPER_MODEL_FILE)
 
@@ -42,12 +42,28 @@ setup: ## Instala y descarga todo lo necesario (una sola vez)
 	./scripts/services.sh stop
 	@echo; echo "Listo. Arranca con: make up"
 
-up: ## Levanta todo (Whisper + Ollama nativos y la app en Docker)
+up: check-port ## Levanta todo (Whisper + Ollama nativos y la app en Docker)
 	mkdir -p "$(DATA_PATH)"
 	./scripts/services.sh start
 	docker compose up -d --build
 	@echo; echo "Transcriptor listo en http://localhost:$(PORT)   (tus sesiones: $(DATA_PATH))"
-	@command -v open >/dev/null && open "http://localhost:$(PORT)" || true
+	@if [ -z "$(NO_OPEN)" ] && command -v open >/dev/null; then open "http://localhost:$(PORT)"; fi
+
+check-port:
+	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx transcriptor; then \
+	  echo "El puerto $(PORT) ya está en uso por otra aplicación. Elige otro, por ejemplo: make up PORT=4748"; exit 1; fi
+
+app: ## Crea el ícono «Transcriptor» (Escritorio y Launchpad): doble clic para encender/apagar, sin Terminal
+	PORT=$(PORT) ICON=$(ICON) ./scripts/make-app.sh install
+
+app-off: ## Borra el ícono «Transcriptor»
+	./scripts/make-app.sh uninstall
+
+autostart: ## Arranca todo solo al iniciar sesión en el Mac (make autostart-off lo desactiva)
+	PORT=$(PORT) DATA_PATH="$(DATA_PATH)" OLLAMA_MODEL=$(OLLAMA_MODEL) WHISPER_THREADS=$(WHISPER_THREADS) RETENTION_DAYS=$(RETENTION_DAYS) ./scripts/autostart.sh install
+
+autostart-off: ## Desactiva el arranque automático
+	./scripts/autostart.sh uninstall
 
 down: ## Baja todo y libera la memoria
 	docker compose down
@@ -63,6 +79,9 @@ logs: ## Logs de la app (Ctrl+C para salir)
 doctor: ## Diagnóstico + prueba real con voz generada (pega la salida si algo falla)
 	./scripts/doctor.sh
 
+stress: ## Prueba de carga y temperatura con ~4 min de voz (¿limita macOS la CPU por calor?)
+	./scripts/stress.sh
+
 bench: ## Mide tiempo y consumo con un audio tuyo: make bench FILE=audio.opus
 	./scripts/bench.sh "$(FILE)"
 
@@ -74,11 +93,11 @@ test: ## Tests del backend y chequeo de tipos de la web
 	cd backend && go vet ./... && go test -race ./...
 	cd web && npm ci --no-audit --no-fund && npm run build
 
-dev: ## Desarrollo local sin Docker (API en :8080, web con recarga en :5173)
+dev: ## Desarrollo local sin Docker (API en :$(PORT), web con recarga en :5173)
 	@trap 'kill 0' EXIT; \
 	(cd web && npm install --no-audit --no-fund && npm run dev) & \
 	(cd backend && DATA_DIR="$(DATA_PATH)" WEB_DIR=../web/dist TMP_DIR=/tmp/transcriptor \
-	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:8080 go run .) & \
+	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:$(PORT) go run .) & \
 	wait
 
-.PHONY: help setup up down status logs doctor bench purge test dev
+.PHONY: help setup up check-port app app-off autostart autostart-off down status logs doctor stress bench purge test dev

@@ -100,10 +100,33 @@ func (w *Whisper) Ping(ctx context.Context) error {
 
 var noiseRe = regexp.MustCompile(`(?i)\[(blank_audio|música|musica|music|silencio|silence)\]|\((música|musica|music|silencio|silence)\)`)
 
-// cleanTranscript quita marcas de ruido de Whisper y normaliza los espacios.
+// Frases que Whisper "inventa" con silencio o ruido (restos de sus datos de entrenamiento).
+// Solo se descartan si son TODO el texto del audio.
+var hallucinations = []string{
+	"subtítulos realizados por la comunidad de amara.org",
+	"subtítulos por la comunidad de amara.org",
+	"subtitulado por la comunidad de amara.org",
+	"gracias por ver el video",
+	"gracias por ver el vídeo",
+	"gracias por ver",
+	"suscríbete",
+	"suscríbete al canal",
+	"¡suscríbete!",
+	"thanks for watching",
+}
+
+// cleanTranscript quita marcas de ruido de Whisper, normaliza los espacios y devuelve ""
+// si el audio solo produjo una alucinación típica de silencio.
 func cleanTranscript(s string) string {
 	s = noiseRe.ReplaceAllString(s, "")
-	return strings.Join(strings.Fields(s), " ")
+	s = strings.Join(strings.Fields(s), " ")
+	plain := strings.ToLower(strings.Trim(s, " .!¡¿?…"))
+	for _, h := range hallucinations {
+		if plain == strings.Trim(h, " .!¡¿?…") {
+			return ""
+		}
+	}
+	return s
 }
 
 // Transcribe envía un WAV de 16 kHz mono a whisper-server y devuelve el texto limpio.

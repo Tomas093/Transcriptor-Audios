@@ -24,13 +24,13 @@ function Cfg([string]$name, $def) {
 
 # --- Configuración (mismos nombres y valores por defecto que en macOS) ---
 $Root         = Split-Path -Parent $PSScriptRoot
-$Port         = Cfg 'PORT' '8080'
+$Port         = Cfg 'PORT' '4747'
 $DataPath     = Cfg 'DATA_PATH' (Join-Path $env:USERPROFILE 'TranscriptorAudios')
 $StateDir     = Cfg 'TRANSCRIPTOR_HOME' (Join-Path $env:USERPROFILE '.transcriptor')
 $OllamaModel  = Cfg 'OLLAMA_MODEL' 'qwen2.5:7b'
-$ModelFile    = Cfg 'WHISPER_MODEL_FILE' 'ggml-large-v3-turbo-q5_0.bin'
+$ModelFile    = Cfg 'WHISPER_MODEL_FILE' 'ggml-large-v3.bin'
 $Threads      = Cfg 'WHISPER_THREADS' '4'
-$Retention    = Cfg 'RETENTION_DAYS' '7'
+$Retention    = Cfg 'RETENTION_DAYS' '1'
 $WhisperFlags = Cfg 'WHISPER_FLAGS' '-fa'   # -fa: flash attention (menos cómputo)
 $WhisperGpu   = Cfg 'WHISPER_GPU' 'auto'    # auto | cuda | cpu: qué compilación de whisper.cpp descargar
 $WhisperPort  = Cfg 'WHISPER_PORT' '8178'
@@ -276,7 +276,7 @@ function Cmd-Help {
   Write-Host '  bench    Mide tiempo y consumo con un audio tuyo: .\transcriptor.cmd bench FILE=audio.opus'
   Write-Host '  purge    Borra TODAS las sesiones guardadas (pide confirmación)'
   Write-Host '  test     Tests del backend y chequeo de tipos de la web'
-  Write-Host '  dev      Desarrollo local sin Docker (API en :8080, web con recarga en :5173)'
+  Write-Host '  dev      Desarrollo local sin Docker (API en :4747 o PORT, web con recarga en :5173)'
 }
 
 function Cmd-Setup {
@@ -300,7 +300,7 @@ function Cmd-Setup {
   New-Item -ItemType Directory -Force (Join-Path $StateDir 'models'), $DataPath | Out-Null
   if (Test-Path $Model) { Write-Host 'Modelo de Whisper ya descargado' }
   else {
-    Write-Host 'Descargando modelo de Whisper (~570 MB)…'
+    Write-Host "Descargando modelo de Whisper ($ModelFile)…"
     curl.exe -L --fail --progress-bar -C - -o $Model $ModelUrl; Check 'La descarga del modelo'
   }
   if (-not (Start-Whisper)) {
@@ -318,7 +318,7 @@ function Cmd-Setup {
 function Cmd-Up {
   DockerReady
   New-Item -ItemType Directory -Force $DataPath | Out-Null
-  # Otro programa en el puerto (p. ej. Apache de XAMPP en el 8080): mejor avisar que dejar fallar a Docker.
+  # Otro programa en el puerto (p. ej. Apache de XAMPP): mejor avisar que dejar fallar a Docker.
   foreach ($c in (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
     $owner = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
     if ($owner -and $owner.ProcessName -notmatch 'docker|wslrelay|vpnkit') {
@@ -479,7 +479,7 @@ function Cmd-Dev {
   # La web va en otra ventana; al cortar la API con Ctrl+C se cierra también.
   $web = Start-Process cmd.exe -ArgumentList '/c', 'npm install --no-audit --no-fund && npm run dev' -WorkingDirectory (Join-Path $Root 'web') -PassThru
   $env:DATA_DIR = $DataPath; $env:WEB_DIR = '..\web\dist'; $env:TMP_DIR = Join-Path ([IO.Path]::GetTempPath()) 'transcriptor'
-  $env:WHISPER_URL = "http://127.0.0.1:$WhisperPort"; $env:OLLAMA_URL = "http://127.0.0.1:$OllamaPort"; $env:ADDR = '127.0.0.1:8080'
+  $env:WHISPER_URL = "http://127.0.0.1:$WhisperPort"; $env:OLLAMA_URL = "http://127.0.0.1:$OllamaPort"; $env:ADDR = "127.0.0.1:$Port"
   Push-Location (Join-Path $Root 'backend')
   try { go run . } finally { Pop-Location; Quiet "taskkill /PID $($web.Id) /T /F" | Out-Null }
 }

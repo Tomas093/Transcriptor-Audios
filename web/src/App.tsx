@@ -10,7 +10,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const [announce, setAnnounce] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
-  const retention = health?.retentionDays ?? 7;
+  const retention = health?.retentionDays ?? 1;
 
   // Arrastrar archivos sobre toda la ventana
   useEffect(() => {
@@ -105,6 +105,7 @@ export default function App() {
         connected={app.connected}
         open={menuOpen}
         onSelect={select}
+        onDelete={(id) => void app.remove(id)}
         onNew={newSession}
         onClose={() => setMenuOpen(false)}
       />

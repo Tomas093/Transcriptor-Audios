@@ -11,7 +11,7 @@ services:
     restart: "no"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
-      - "127.0.0.1:${PORT:-8080}:8080" # solo accesible desde tu equipo
+      - "127.0.0.1:${PORT:-4747}:8080" # solo accesible desde tu equipo
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -19,7 +19,7 @@ services:
       WHISPER_URL: "http://host.docker.internal:${WHISPER_PORT:-8178}"
       OLLAMA_URL: "http://host.docker.internal:${OLLAMA_PORT:-11434}"
       OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5:7b}"
-      RETENTION_DAYS: "${RETENTION_DAYS:-7}" # 0 = no borrar nunca
+      RETENTION_DAYS: "${RETENTION_DAYS:-1}" # 0 = no borrar nunca
     volumes:
       - "${DATA_PATH:-./data}:/data" # tus sesiones: audios, textos y resúmenes
     # Límites: la app casi no consume; solo ffmpeg trabaja un instante por audio.

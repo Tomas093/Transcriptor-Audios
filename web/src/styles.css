@@ -272,13 +272,60 @@ code {
   color: var(--muted);
 }
 
+.row-wrap {
+  position: relative;
+}
+.row-delete {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 150ms var(--ease), color 150ms var(--ease), background-color 150ms var(--ease);
+}
+/* Visible al pasar el cursor, al enfocar con teclado y siempre en pantallas táctiles. */
+.row-wrap:hover .row-delete,
+.row-wrap:focus-within .row-delete,
+.row-delete:focus-visible {
+  opacity: 1;
+}
+.row-delete:hover {
+  color: var(--err);
+  background: var(--err-bg);
+}
+@media (hover: none) {
+  .row-delete {
+    opacity: 1;
+  }
+}
+.row-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.row-confirm span {
+  flex: 1 0 100%;
+}
+
 .session-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 38px 8px 10px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;

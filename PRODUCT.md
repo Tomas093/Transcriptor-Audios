@@ -14,7 +14,7 @@ Transcribir de forma local (sin enviar nada a la nube y sin coste) los audios de
 
 ## Brand Personality
 
-Tranquila, enfocada y rápida. La voz es breve y directa, en español, sin jerga técnica ni entusiasmo forzado. Debe sentirse como una herramienta de lectura bien hecha: la calma de la interfaz de Claude Code (barra de sesiones, hilo de mensajes) con un toque propio e innovador en los detalles, que quede cuidada y con identidad sin recargar. El objetivo emocional es confianza y alivio: "ya lo tengo, léelo".
+Tranquila, enfocada y rápida, con estética Windows 95 (escritorio turquesa, ventanas grises con bisel y barras de título azul marino; cada audio es una ventana). La voz es breve y directa, en español, sin jerga técnica ni entusiasmo forzado. Debe sentirse como una herramienta de lectura bien hecha: la calma de la interfaz de Claude Code (barra de sesiones, hilo de mensajes) con un toque propio e innovador en los detalles, que quede cuidada y con identidad sin recargar. El objetivo emocional es confianza y alivio: "ya lo tengo, léelo".
 
 ## Anti-references
 
@@ -31,7 +31,7 @@ Tranquila, enfocada y rápida. La voz es breve y directa, en español, sin jerga
 2. **Cero fricción para empezar.** Soltar archivos y listo: sin configuración previa, sin pasos obligatorios, sin decisiones que no aporten.
 3. **Estado siempre visible, nunca ruidoso.** Cola, progreso y errores se comunican con claridad y calma. La interfaz nunca deja dudas sobre qué está pasando, ni siquiera cuando el modelo local tarda.
 4. **Discreta en clase.** Debe aguantar ser vista de reojo por otros sin llamar la atención: tono sereno, buen modo oscuro y nada que parpadee o distraiga.
-5. **Control sobre tus datos.** Las sesiones son tuyas y locales. Eliminar una sesión es evidente, rápido y seguro, y el borrado automático a los 7 días se explica sin esconderse.
+5. **Control sobre tus datos.** Las sesiones son tuyas y locales. Eliminar una sesión es evidente, rápido y seguro, y el borrado automático (a las 24 h sin actividad) se explica sin esconderse.
 
 ## Accessibility & Inclusion
 
