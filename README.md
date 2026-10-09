@@ -274,7 +274,7 @@ Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`). P
 | `WHATSAPP_BACKLOG_MIN` | `60` | Al encender, incluir audios de WhatsApp de los últimos N minutos |
 | `BACKGROUND_ENABLED` | `0` | `1` = el agente enciende todo cuando llega un audio |
 | `BACKGROUND_IDLE_MIN` | `10` | Minutos sin actividad hasta que el agente apaga todo |
-| `WHATSAPP_MEDIA` | la de WhatsApp | Carpeta de audios de WhatsApp (en Windows, la que encuentre `whatsapp-diagnostico`) |
+| `WHATSAPP_MEDIA` | la de WhatsApp | Carpeta de audios de WhatsApp (en Windows, la que encuentre `whatsapp-spike`) |
 | `TZ` | la del sistema | Zona horaria del contenedor (en Windows se convierte sola; si sale mal: `TZ=America/Argentina/Buenos_Aires`) |
 
 Avanzado (variables de la app): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (`12288`), `MAX_UPLOAD_MB` (`1024`), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; protege contra ataques de *DNS rebinding*).
@@ -299,7 +299,8 @@ Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (wh
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
 web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en web/src/styles/win95.css)
 scripts/   whatsapp.sh + agent.sh (copia de audios de WhatsApp y agente en segundo plano), launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
-           transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench…); se usa con transcriptor.cmd
+           agent-launcher.c: lanzador mínimo del agente en Mac (el único programa con Acceso total al disco)
+           transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench, agente, whatsapp-spike…); se usa con transcriptor.cmd
 Dockerfile, docker-compose.yml, Makefile
 PRODUCT.md contexto de producto y diseño
 ```
@@ -309,5 +310,5 @@ PRODUCT.md contexto de producto y diseño
 - **Probado en un Mac real** (Apple M4 Max, 36 GB): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
 - **Probado en Windows** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Docker Desktop 28): `setup`, `up` y `doctor` completos con **RESULTADO: OK**, con Whisper en GPU (CUDA) y Ollama reales: transcripción exacta, resúmenes por audio y general, 3 subidas simultáneas (42 s) y detección de repetidos; 2 audios cortos en 76 s en frío (incluye cargar `qwen2.5:7b`), GPU al 99 % y 3,8 GB de VRAM. Se midió con el modelo turbo, antes de que `large-v3` pasara a ser el modelo por defecto.
 - **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (escritorio, móvil, errores) con auditoría de accesibilidad sin violaciones.
-- **WhatsApp en macOS** (macOS 27, WhatsApp de escritorio): copia de audios propios, de otros y **reenviados**, detección de chat y agente con su propio permiso. El agente de **Windows** está sin probar en Windows (ver arriba).
+- **WhatsApp en macOS** (macOS 27, WhatsApp de escritorio): copia de audios propios, de otros y **reenviados**, detección de chat y agente con su propio permiso. Ciclo completo en segundo plano con todo apagado: un audio reenviado desde el móvil se copió a los 12 s, encendió todo, quedó transcrito y resumido en menos de 1 min, y todo se apagó solo al minuto sin actividad. Vigilante en reposo: ~4,5 MB y 0,3 s de CPU cada 3 min. El agente de **Windows** está sin probar en Windows (ver arriba).
 - **Sin medir objetivamente:** la temperatura sostenida con audios muy largos. Para eso está `make stress`.
