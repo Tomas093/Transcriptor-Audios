@@ -74,6 +74,10 @@ Dos cosas más, una sola vez:
     Ojo: este permiso es amplio, porque lo usa bash. Si no lo quieres, no instales el agente:
     todo lo demás (make up, el ícono, la carpeta entrada) funciona sin él.
     (Si antes añadiste «transcriptor-bash», ya puedes quitarlo de la lista.)
+    Si tu proyecto está en Documentos, Escritorio o Descargas, este mismo permiso también deja
+    que el agente lea los scripts del proyecto.
+ 1b. Después de darle el permiso, reinicia el agente para que lo tome:
+        launchctl kickstart -k gui/$(id -u)/$LABEL
  2. En la web: Configuración → elige los chats y activa «Escuchar en segundo plano».
 Registro: $STATE_DIR/whatsapp.log   ·   Quitar el agente: make agente-off
 MSG
