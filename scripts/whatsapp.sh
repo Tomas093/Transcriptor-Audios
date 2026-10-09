@@ -27,7 +27,6 @@ DETECT="$DATA_PATH/whatsapp-detect"
 SEENFILE="$STATE_DIR/whatsapp-seen"
 PIDFILE="$STATE_DIR/whatsapp.pid"      # vigilante que lanzó `make up`
 AGENTPID="$STATE_DIR/agent.pid"        # agente siempre activo
-AGENT_BASH="$STATE_DIR/bin/transcriptor-bash"  # copia de bash con el permiso (la crea make agente)
 AGENT_STARTED="$STATE_DIR/agent-started"       # existe si el agente encendió la app (y puede apagarla)
 DOCKER_BY_AGENT="$STATE_DIR/agent-docker"      # existe si el agente abrió Docker Desktop
 LOG="$STATE_DIR/whatsapp.log"
@@ -240,9 +239,7 @@ agent() {
 start() {
   alive "$AGENTPID" && return 0   # el agente ya vigila (y copia) por su cuenta
   alive "$PIDFILE" && return 0
-  # Si existe la copia de bash a la que `make agente` pidió el permiso, se usa esa (el permiso es por programa).
-  local interp=bash; [[ -x "$AGENT_BASH" ]] && interp="$AGENT_BASH"
-  nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "$!"' -- "$interp" "$SELF" vigilar >>"$LOG" 2>&1 &
+  nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "$!"' -- bash "$SELF" vigilar >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
 }
 
@@ -273,16 +270,12 @@ diagnostico() {
   echo "== carpeta de WhatsApp"; echo "ruta: $MEDIA"
   out="$(ls "$MEDIA" 2>&1 >/dev/null)"; rc=$?
   echo "ls con este bash: código $rc ${out:+→ $out}"
-  echo "== copia de bash para el agente ($AGENT_BASH)"
-  if [[ -x "$AGENT_BASH" ]]; then
-    out="$("$AGENT_BASH" -c 'echo funciona' 2>&1)"; rc=$?
-    echo "se ejecuta: código $rc ${out:+→ $out}"
-    out="$("$AGENT_BASH" -c 'ls "$0" >/dev/null' "$MEDIA" 2>&1)"; rc=$?
-    echo "ls con la copia: código $rc ${out:+→ $out}"
-    codesign -v "$AGENT_BASH" 2>&1 | head -2 | sed 's/^/firma: /'
-  else
-    echo "no existe (make agente la crea)"
-  fi
+  echo "== desde qué programa se ejecuta (el permiso de Acceso total al disco hay que dárselo a este)"
+  local p="$$" i name
+  for i in 1 2 3 4 5 6 7 8; do
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; [[ -n "$p" && "$p" -gt 1 ]] || break
+    name="$(ps -o comm= -p "$p" 2>/dev/null)"; echo "  ← $name"
+  done
   echo "== procesos"
   alive "$AGENTPID" && echo "agente: en marcha (pid $(cat "$AGENTPID"))" || echo "agente: no está en marcha"
   alive "$PIDFILE" && echo "vigilante de make up: en marcha (pid $(cat "$PIDFILE"))" || echo "vigilante de make up: no está en marcha"

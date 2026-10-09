@@ -12,9 +12,9 @@ AGENTS_DIR="${LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST="$AGENTS_DIR/$LABEL.plist"
 STATE_DIR="${TRANSCRIPTOR_HOME:-$HOME/.transcriptor}"
 DOMAIN="gui/$(id -u)"
-# Copia propia de bash: el permiso "Acceso total al disco" se le da a ESTA copia y no a /bin/bash,
-# que usan todos los scripts del sistema.
-AGENT_BASH="$STATE_DIR/bin/transcriptor-bash"
+# (Una copia propia de bash no sirve: macOS la mata por firma de código al ejecutarla.)
+AGENT_BASH="/bin/bash"
+OLD_COPY="$STATE_DIR/bin/transcriptor-bash"
 
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<<"$1"; }
 
@@ -28,8 +28,8 @@ env_entries() {
 }
 
 install() {
-  mkdir -p "$AGENTS_DIR" "$STATE_DIR/bin"
-  cp /bin/bash "$AGENT_BASH"
+  mkdir -p "$AGENTS_DIR" "$STATE_DIR"
+  rm -f "$OLD_COPY"
   cat >"$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -70,9 +70,10 @@ PLIST
 
 Dos cosas más, una sola vez:
  1. Permiso: Ajustes del Sistema → Privacidad y seguridad → Acceso total al disco → «+» → pulsa
-    Cmd+Shift+G, pega esta ruta y añádela:
-        $AGENT_BASH
-    (si al reiniciar el agente la web sigue pidiendo permiso, añade /bin/bash en su lugar)
+    Cmd+Shift+G, escribe  /bin/bash  y añádelo (y actívalo).
+    Ojo: este permiso es amplio, porque lo usa bash. Si no lo quieres, no instales el agente:
+    todo lo demás (make up, el ícono, la carpeta entrada) funciona sin él.
+    (Si antes añadiste «transcriptor-bash», ya puedes quitarlo de la lista.)
  2. En la web: Configuración → elige los chats y activa «Escuchar en segundo plano».
 Registro: $STATE_DIR/whatsapp.log   ·   Quitar el agente: make agente-off
 MSG
@@ -82,7 +83,7 @@ uninstall() {
   if command -v launchctl >/dev/null; then
     launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || launchctl unload "$PLIST" >/dev/null 2>&1 || true
   fi
-  rm -f "$PLIST" "$AGENT_BASH"
+  rm -f "$PLIST" "$OLD_COPY"
   echo "Agente desinstalado."
 }
 

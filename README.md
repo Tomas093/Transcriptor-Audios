@@ -123,11 +123,11 @@ make agente        # una sola vez
 
 y en **Configuración → Segundo plano** activa *Escuchar en segundo plano*. Entonces:
 
-- Un vigilante muy liviano arranca al iniciar sesión y mira la carpeta cada 15 s (prioridad mínima, sin GPU, unos pocos MB). **Con todo apagado, eso es lo único que consume**; compruébalo en el Monitor de Actividad (proceso `transcriptor-bash`).
+- Un vigilante muy liviano arranca al iniciar sesión y mira la carpeta cada 15 s (prioridad mínima, sin GPU, unos pocos MB). **Con todo apagado, eso es lo único que consume**; compruébalo en el Monitor de Actividad (proceso `bash`, `whatsapp.sh agent`).
 - Cuando llega un audio nuevo: copia el audio, enciende Docker, Whisper y Ollama, se procesa y aparece la sesión. Tarda entre 30 s y 1-2 min en estar listo (arrancar Docker y cargar el modelo).
 - Tras **N minutos sin actividad** (10 por defecto, configurable) apaga todo y libera la memoria. Opcional: cerrar también Docker Desktop (solo si lo abrió él y no hay otros contenedores en marcha).
 - Si enciendes tú (`make up` o el ícono), el agente no lo apaga: solo apaga lo que él encendió.
-- El permiso de *Acceso total al disco* para el agente se le da a una copia propia de bash (`~/.transcriptor/bin/transcriptor-bash`), que `make agente` te indica; no a `/bin/bash`.
+- El agente necesita *Acceso total al disco* para `/bin/bash` (`make agente` te dice cómo). Es un permiso amplio, porque lo usa bash: si no lo quieres, no instales el agente; `make up`, el ícono y la carpeta `entrada` funcionan sin él.
 - `make whatsapp-estado` muestra qué vigila; `make agente-off` lo quita. Registro: `~/.transcriptor/whatsapp.log`.
 
 ### Sesiones
