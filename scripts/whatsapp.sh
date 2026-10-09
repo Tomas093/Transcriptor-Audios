@@ -37,7 +37,10 @@ mkdir -p "$STATE_DIR"
 
 # stat/date: GNU primero (en GNU `stat -f` no falla, solo hace otra cosa) y luego BSD (macOS).
 mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
-statms() { stat -c '%Y %s' "$1" 2>/dev/null || stat -f '%m %z' "$1" 2>/dev/null; }
+# Hora de cambio (ctime), no de modificación: WhatsApp conserva la fecha original al reenviar un
+# audio (lo copia con su mtime viejo), pero el ctime sí cambia cuando aparece el archivo nuevo.
+ctime() { stat -c %Z "$1" 2>/dev/null || stat -f %c "$1" 2>/dev/null; }
+statms() { stat -c '%Z %s' "$1" 2>/dev/null || stat -f '%c %z' "$1" 2>/dev/null; }
 stamp() { date -r "$1" '+%Y-%m-%d %H.%M.%S' 2>/dev/null || date -d "@$1" '+%Y-%m-%d %H.%M.%S'; }
 touch_epoch() { touch -t "$(date -r "$2" '+%Y%m%d%H%M.%S' 2>/dev/null || date -d "@$2" '+%Y%m%d%H%M.%S')" "$1"; }
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
@@ -125,7 +128,7 @@ scan_copy() { # $1 = ahora, $2 = inicio (epoch)
       NEW_COPIED=$((NEW_COPIED + 1)); COPIED=$((COPIED + 1)); LAST_AT="$1"
       chat="${f#"$MEDIA"/}"; LAST_CHAT="${chat%%/*}"
     fi
-  done < <(find "${dirs[@]}" -type f -name '*.opus' -newer "$MARK" 2>/dev/null)
+  done < <(find "${dirs[@]}" -type f -name '*.opus' -cnewer "$MARK" 2>/dev/null)
 }
 
 # Detección de chat: mientras la web lo pide (unos minutos), mira todos los chats y anota el de
@@ -139,9 +142,9 @@ detect_active() { # $1 = ahora
 detect_scan() { # $1 = ahora
   local f m best=0 bestf=""
   while IFS= read -r f; do
-    m="$(mtime "$f")" || continue
+    m="$(ctime "$f")" || continue
     [[ "$m" -gt "$best" ]] && { best="$m"; bestf="$f"; }
-  done < <(find "$MEDIA" -type f -name '*.opus' -mmin -3 2>/dev/null)
+  done < <(find "$MEDIA" -type f -name '*.opus' -cmin -3 2>/dev/null)
   [[ -n "$bestf" ]] || return 0
   bestf="${bestf#"$MEDIA"/}"; DET_CHAT="${bestf%%/*}"; DET_AT="$best"
 }
