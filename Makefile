@@ -57,6 +57,12 @@ check-port:
 entrada: ## Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)
 	mkdir -p "$(INBOX_PATH)" && open "$(INBOX_PATH)"
 
+whatsapp: ## Elige un chat de WhatsApp de escritorio para copiar sus audios a la entrada (macOS)
+	./scripts/whatsapp.sh elegir
+
+whatsapp-off: ## Deja de copiar audios de WhatsApp
+	./scripts/whatsapp.sh quitar
+
 app: ## Crea el ícono «Transcriptor» (Escritorio y Launchpad): doble clic para encender/apagar, sin Terminal
 	PORT=$(PORT) ICON=$(ICON) ./scripts/make-app.sh install
 
@@ -104,4 +110,4 @@ dev: ## Desarrollo local sin Docker (API en :$(PORT), web con recarga en :5173)
 	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:$(PORT) go run .) & \
 	wait
 
-.PHONY: help setup up check-port entrada app app-off autostart autostart-off down status logs doctor stress bench purge test dev
+.PHONY: help setup up check-port entrada whatsapp whatsapp-off app app-off autostart autostart-off down status logs doctor stress bench purge test dev

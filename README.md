@@ -101,6 +101,16 @@ Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `ma
 - Si algo cae mientras la app está apagada, se procesa en cuanto la enciendas.
 - Un audio idéntico a uno ya procesado en esa sesión no se repite. Los archivos que no son audio se ignoran, y un archivo que aún se está descargando espera a terminar.
 
+#### Sin guardar nada a mano: audios de WhatsApp de escritorio (macOS, opcional)
+
+WhatsApp de escritorio ya deja en tu disco los audios que recibes o reproduces. Puedes pedirle al Transcriptor que **copie solos a `entrada` los audios de los chats que elijas**. No se conecta a WhatsApp ni a tu cuenta: solo copia los ficheros `.opus` de esa carpeta, nada más (no abre sus bases de datos), así que no hay riesgo para tu número.
+
+1. **Permiso (una vez):** Ajustes del Sistema → Privacidad y seguridad → **Acceso total al disco** → activa **Terminal** (y **Transcriptor**, si enciendes con el ícono). macOS protege los datos de WhatsApp y sin esto da *Operation not permitted*.
+2. **Elige el chat:** `make whatsapp`. Te pide reproducir un audio de ese chat en WhatsApp y pulsar Enter; así sabe cuál es. Repite el comando para otro chat.
+3. Desde ahí, cada vez que enciendas (`make up` o el ícono) copia los audios **nuevos** de esos chats (los que lleguen después de encender) a `entrada`, con nombre por fecha y hora, y se procesan solos. Para incluir también los de los últimos 30 min: `make up WHATSAPP_BACKLOG_MIN=30`.
+
+`./scripts/whatsapp.sh estado` muestra qué vigila; `make whatsapp-off` deja de vigilar. Registro: `~/.transcriptor/whatsapp.log`. Ten en cuenta que es una carpeta interna de WhatsApp: si una actualización cambia dónde guarda los audios, dejará de copiarlos (el resto sigue funcionando).
+
 ### Sesiones
 
 La barra lateral lista tus sesiones, como un chat. Cada vez que sueltas audios en "Nueva sesión" se crea una; puedes **seguir añadiendo audios** a una sesión existente.
@@ -155,6 +165,7 @@ En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart` y `
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
 | `make entrada` | Abre la carpeta de entrada |
+| `make whatsapp` / `make whatsapp-off` | Elige / quita chats de WhatsApp de escritorio cuyos audios se copian solos a la entrada (macOS) |
 | `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
 | `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
