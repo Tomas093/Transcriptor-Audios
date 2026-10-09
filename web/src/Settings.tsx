@@ -153,6 +153,11 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
                   {detectSince && !detected ? (
                     <span className="dlg-note" role="status">Reproduce un audio de ese chat en WhatsApp de escritorio.</span>
                   ) : null}
+                  {detectSince && !detected && !status.running ? (
+                    <span className="dlg-warn" role="alert">
+                      El vigilante no está en marcha, así que no puede detectar nada. En la Terminal: <code>make down &amp;&amp; make up</code> y luego <code>./scripts/whatsapp.sh diagnostico</code>.
+                    </span>
+                  ) : null}
                   {detected ? (
                     <span className="dlg-found" role="status">
                       Detectado: <code title={detected}>{shortId(detected)}</code>

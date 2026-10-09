@@ -81,9 +81,14 @@ write_status() { # $1 = ahora
   fi
 }
 
-can_read_media() { ls "$MEDIA" >/dev/null 2>&1; }
+READ_ERR=""
+can_read_media() { READ_ERR="$(ls "$MEDIA" 2>&1 >/dev/null)"; [[ -z "$READ_ERR" ]]; }
 no_access_msg() {
-  echo "Falta permiso de Acceso total al disco para ${BASH:-bash} (Ajustes del Sistema → Privacidad y seguridad). Si ya lo diste, reinicia el vigilante: make down && make up."
+  if [[ "$READ_ERR" == *"not permitted"* || "$READ_ERR" == *"Operation not"* ]]; then
+    echo "Falta permiso de Acceso total al disco para ${BASH:-bash} (Ajustes del Sistema → Privacidad y seguridad). Si ya lo diste, reinicia el vigilante: make down && make up."
+  else
+    echo "No puedo leer la carpeta de WhatsApp ($MEDIA): ${READ_ERR:-error desconocido}"
+  fi
 }
 
 # --- Copia ------------------------------------------------------------------------------------
@@ -260,11 +265,39 @@ estado() {
   can_read_media && echo "Carpeta de WhatsApp: legible" || echo "Carpeta de WhatsApp: SIN PERMISO. $(no_access_msg)"
 }
 
+# Para pegar en una conversación cuando algo no anda: no cambia nada, solo informa.
+diagnostico() {
+  local out rc
+  echo "== sistema"; echo "macOS: $(sw_vers -productVersion 2>/dev/null || uname -sr) · $(uname -m)"
+  echo "bash que ejecuta esto: ${BASH:-?} ${BASH_VERSION:-}"
+  echo "== carpeta de WhatsApp"; echo "ruta: $MEDIA"
+  out="$(ls "$MEDIA" 2>&1 >/dev/null)"; rc=$?
+  echo "ls con este bash: código $rc ${out:+→ $out}"
+  echo "== copia de bash para el agente ($AGENT_BASH)"
+  if [[ -x "$AGENT_BASH" ]]; then
+    out="$("$AGENT_BASH" -c 'echo funciona' 2>&1)"; rc=$?
+    echo "se ejecuta: código $rc ${out:+→ $out}"
+    out="$("$AGENT_BASH" -c 'ls "$0" >/dev/null' "$MEDIA" 2>&1)"; rc=$?
+    echo "ls con la copia: código $rc ${out:+→ $out}"
+    codesign -v "$AGENT_BASH" 2>&1 | head -2 | sed 's/^/firma: /'
+  else
+    echo "no existe (make agente la crea)"
+  fi
+  echo "== procesos"
+  alive "$AGENTPID" && echo "agente: en marcha (pid $(cat "$AGENTPID"))" || echo "agente: no está en marcha"
+  alive "$PIDFILE" && echo "vigilante de make up: en marcha (pid $(cat "$PIDFILE"))" || echo "vigilante de make up: no está en marcha"
+  launchctl print "gui/$(id -u)/com.transcriptor.agent" 2>&1 | grep -E "state =|last exit|pid =|runs =" | head -5 | sed 's/^[[:space:]]*/launchd: /'
+  echo "== configuración ($CONF)"; cat "$CONF" 2>/dev/null || echo "(no existe: aún no se guardó nada en Configuración)"
+  echo "== estado ($STATUS)"; cat "$STATUS" 2>/dev/null || echo "(no existe)"
+  echo "== últimas líneas del registro ($LOG)"; tail -n 15 "$LOG" 2>/dev/null || echo "(sin registro)"
+}
+
 case "${1:-}" in
+  diagnostico) diagnostico ;;
   start) start ;;
   stop) stop ;;
   agent) agent ;;
   estado) estado ;;
   vigilar) run_loop stack ;;
-  *) echo "Uso: $0 {start|stop|agent|estado|vigilar}" >&2; exit 2 ;;
+  *) echo "Uso: $0 {start|stop|agent|estado|diagnostico|vigilar}" >&2; exit 2 ;;
 esac
