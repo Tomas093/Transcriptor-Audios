@@ -1,4 +1,4 @@
-import type { Health, Session, SessionInfo } from "./types";
+import type { Health, Session, SessionInfo, Settings, SettingsPayload } from "./types";
 
 export class ApiError extends Error {}
 
@@ -50,5 +50,8 @@ export const api = {
     for (const f of files) form.append("files", f, f.name);
     return req<UploadResult>(`/api/sessions/${id}/audios`, { method: "POST", body: form });
   },
+  settings: () => req<SettingsPayload>("/api/settings"),
+  saveSettings: (s: Settings) => req<SettingsPayload>("/api/settings", json("PUT", s)),
+  detectChat: () => req<void>("/api/whatsapp/detect", { method: "POST" }),
   exportUrl: (id: string) => `/api/sessions/${id}/export`,
 };

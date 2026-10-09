@@ -103,24 +103,32 @@ Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `ma
 
 #### Sin guardar nada a mano: audios de WhatsApp de escritorio (macOS, opcional)
 
-WhatsApp de escritorio ya deja en tu disco los audios que recibes o reproduces. Puedes pedirle al Transcriptor que **copie solos a `entrada` los audios de WhatsApp**, y de ahí se procesan solos. No se conecta a WhatsApp ni a tu cuenta: solo copia los ficheros `.opus` de esa carpeta (no abre sus bases de datos), así que no hay riesgo para tu número.
+WhatsApp de escritorio ya deja en tu disco los audios que recibes o reproduces. El Transcriptor puede **copiarlos solo a `entrada`** (y de ahí se procesan solos). No se conecta a WhatsApp ni a tu cuenta: solo copia los ficheros `.opus` de esa carpeta (no abre sus bases de datos), así que no hay riesgo para tu número.
 
-1. **Permiso (una vez):** Ajustes del Sistema → Privacidad y seguridad → **Acceso total al disco** → activa **Terminal** (y **Transcriptor**, si enciendes con el ícono). macOS protege los datos de WhatsApp y sin esto da *Operation not permitted*.
-2. **Qué copiar, en el fichero `.env`:** `cp .env.example .env` y edita (cambiar algo ahí es lo único que hace falta, sin tocar código):
-   ```
-   # todos los chats
-   WHATSAPP_CHATS=all
-   # o solo algunos (por ejemplo, el chat contigo mismo al que reenvías los audios)
-   WHATSAPP_CHATS=180839614816436@lid
-   # al encender, incluye también los audios de los últimos 60 minutos (0 = solo los nuevos)
-   WHATSAPP_BACKLOG_MIN=60
-   ```
-   Para saber el id de un chat: `make whatsapp`, reproduce un audio de ese chat en WhatsApp y pulsa Enter; te muestra su id (y también lo recuerda sin usar `.env`).
-3. Enciende (`make up` o el ícono). Desde ahí copia los audios de esos chats: los **de la última hora** y los que lleguen mientras esté encendido, con nombre por fecha y hora. Los más viejos se ignoran.
+Todo se configura **desde la web**: botón **Configuración** (abajo a la izquierda).
 
-Dos formas de usarlo: con `WHATSAPP_CHATS=all` no tienes que hacer nada; con tu propio chat, reenvías ahí los audios que quieras procesar (WhatsApp permite reenviar varios a la vez) y solo esos se transcriben.
+1. **Permiso (una vez):** Ajustes del Sistema → Privacidad y seguridad → **Acceso total al disco** → activa **Terminal** (y **Transcriptor**, si enciendes con el ícono). macOS protege los datos de WhatsApp y sin esto la web mostrará un aviso con el permiso que falta.
+2. **Qué copiar:** *Todos los chats*, o *Solo estos chats* (por ejemplo, el chat contigo mismo al que reenvías los audios que quieras procesar; WhatsApp permite reenviar varios a la vez). Para añadir un chat: **Detectar chat**, reproduce un audio de ese chat en WhatsApp y pulsa **Añadir**.
+3. **Hacia atrás:** al encender, también procesa los audios de los últimos N minutos (60 por defecto; 0 = solo los nuevos). Los más viejos se ignoran.
 
-`./scripts/whatsapp.sh estado` muestra qué vigila; `make whatsapp-off` quita la lista de `make whatsapp` (para dejar de vigilar, borra también `WHATSAPP_CHATS` del `.env`). Registro: `~/.transcriptor/whatsapp.log`. Solo se copian los audios que WhatsApp **ya guardó en el disco** (los que se descargaron solos o al reproducirlos). Es una carpeta interna de WhatsApp: si una actualización cambia dónde guarda los audios, dejará de copiarlos y el resto sigue funcionando.
+Los audios se copian con nombre por fecha y hora. Solo se copian los que WhatsApp **ya guardó en el disco** (los descargados solos o al reproducirlos). Es una carpeta interna de WhatsApp: si una actualización cambia dónde guarda los audios, dejará de copiarlos y el resto sigue funcionando.
+
+##### Que escuche en segundo plano y se encienda solo
+
+Con `make up` el vigilante funciona mientras todo está encendido. Si quieres que **escuche siempre** y encienda todo **solo cuando llegue un audio**:
+
+```bash
+make agente        # una sola vez
+```
+
+y en **Configuración → Segundo plano** activa *Escuchar en segundo plano*. Entonces:
+
+- Un vigilante muy liviano arranca al iniciar sesión y mira la carpeta cada 15 s (prioridad mínima, sin GPU, unos pocos MB). **Con todo apagado, eso es lo único que consume**; compruébalo en el Monitor de Actividad (proceso `transcriptor-bash`).
+- Cuando llega un audio nuevo: copia el audio, enciende Docker, Whisper y Ollama, se procesa y aparece la sesión. Tarda entre 30 s y 1-2 min en estar listo (arrancar Docker y cargar el modelo).
+- Tras **N minutos sin actividad** (10 por defecto, configurable) apaga todo y libera la memoria. Opcional: cerrar también Docker Desktop (solo si lo abrió él y no hay otros contenedores en marcha).
+- Si enciendes tú (`make up` o el ícono), el agente no lo apaga: solo apaga lo que él encendió.
+- El permiso de *Acceso total al disco* para el agente se le da a una copia propia de bash (`~/.transcriptor/bin/transcriptor-bash`), que `make agente` te indica; no a `/bin/bash`.
+- `make whatsapp-estado` muestra qué vigila; `make agente-off` lo quita. Registro: `~/.transcriptor/whatsapp.log`.
 
 ### Sesiones
 
@@ -176,7 +184,8 @@ En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart` y `
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
 | `make entrada` | Abre la carpeta de entrada |
-| `make whatsapp` / `make whatsapp-off` | Elige / quita chats de WhatsApp de escritorio cuyos audios se copian solos a la entrada (macOS) |
+| `make agente` / `make agente-off` | Instala / quita el vigilante en segundo plano que enciende todo cuando llega un audio de WhatsApp (macOS; se configura en la web) |
+| `make whatsapp-estado` | Muestra qué audios de WhatsApp vigila y si tiene permiso |
 | `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
 | `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
@@ -213,8 +222,6 @@ Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`). P
 |---|---|---|
 | `PORT` | `4747` | Puerto de la web |
 | `DATA_PATH` | `~/TranscriptorAudios` | Dónde se guardan las sesiones |
-| `WHATSAPP_CHATS` | — | macOS: `all` o ids de chats cuyos audios se copian a la entrada |
-| `WHATSAPP_BACKLOG_MIN` | `60` | macOS: al encender, incluye audios de los últimos N min (0 = solo nuevos) |
 | `INBOX_PATH` | `~/TranscriptorAudios/entrada` | Carpeta de entrada vigilada |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
 | `WHISPER_MODEL_FILE` | `ggml-large-v3.bin` | Modelo de Whisper (el más preciso, ~3 GB). Más rápido y liviano: `ggml-large-v3-turbo-q5_0.bin` |
@@ -246,7 +253,7 @@ Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (wh
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
 web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en web/src/styles/win95.css)
-scripts/   launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
+scripts/   whatsapp.sh + agent.sh (copia de audios de WhatsApp y agente en segundo plano), launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
            transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench…); se usa con transcriptor.cmd
 Dockerfile, docker-compose.yml, Makefile
 PRODUCT.md contexto de producto y diseño

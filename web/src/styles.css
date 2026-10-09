@@ -1007,3 +1007,29 @@ code {
 .crash p {
   color: var(--muted);
 }
+
+/* ---- Ventana de configuración ---- */
+.side-settings { margin-bottom: 8px; }
+.dlg { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; }
+.dlg::backdrop { background: oklch(0.2 0 0 / 0.45); }
+.dlg-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.dlg-bar h2 { margin: 0; font-size: 15px; }
+.dlg-body { padding: 12px; display: grid; gap: 12px; }
+.dlg-group { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px; margin: 0; display: grid; gap: 10px; min-width: 0; }
+.dlg-group legend { padding: 0 6px; font-weight: 600; }
+.dlg-note { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.dlg-hint { color: var(--muted); font-size: 12px; }
+.dlg-warn { margin: 0; padding: 7px 9px; background: var(--warn-bg); border: 1px solid var(--warn-line); font-size: 12.5px; line-height: 1.45; }
+.dlg-choices { display: grid; gap: 6px; }
+.dlg-choices label, .dlg-check, .dlg-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.dlg-check { align-items: flex-start; }
+.dlg-check input { margin-top: 2px; }
+.dlg-row { flex-wrap: wrap; }
+.dlg input[type="number"] { width: 72px; padding: 3px 5px; font: inherit; }
+.dlg-chats { display: grid; gap: 8px; }
+.dlg-chats ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.dlg-chats li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dlg code { font-size: 12px; overflow-wrap: anywhere; }
+.dlg-detect, .dlg-found { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dlg-status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.dlg-actions { display: flex; gap: 8px; justify-content: flex-end; }

@@ -21,18 +21,22 @@ import (
 )
 
 type API struct {
-	cfg     Config
-	store   *Store
-	worker  *Worker
-	hub     *Hub
-	whisper *Whisper
-	ollama  *Ollama
+	cfg      Config
+	store    *Store
+	worker   *Worker
+	hub      *Hub
+	whisper  *Whisper
+	ollama   *Ollama
+	settings *SettingsStore
 }
 
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/events", a.events)
+	mux.HandleFunc("GET /api/settings", a.getSettings)
+	mux.HandleFunc("PUT /api/settings", a.putSettings)
+	mux.HandleFunc("POST /api/whatsapp/detect", a.detectChat)
 	mux.HandleFunc("GET /api/sessions", a.listSessions)
 	mux.HandleFunc("POST /api/sessions", a.createSession)
 	mux.HandleFunc("GET /api/sessions/{id}", a.getSession)
@@ -119,6 +123,31 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Ollama = a.ollama.Status(r.Context())
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) getSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"settings": a.settings.Get(), "whatsapp": a.settings.Status()})
+}
+
+func (a *API) putSettings(w http.ResponseWriter, r *http.Request) {
+	var in Settings
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, "ajustes inválidos")
+		return
+	}
+	if err := a.settings.Set(in); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"settings": a.settings.Get(), "whatsapp": a.settings.Status()})
+}
+
+func (a *API) detectChat(w http.ResponseWriter, r *http.Request) {
+	if err := a.settings.Detect(); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) events(w http.ResponseWriter, r *http.Request) {

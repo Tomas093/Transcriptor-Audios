@@ -228,5 +228,6 @@ export function useApp() {
     list, sessions, health, connected, loaded, activeId, uploading, notice, dismissNotice: () => setNotice(null),
     session: activeId ? sessions[activeId] : undefined,
     addFiles, rename, remove, retry, retryGlobal,
+    notify: (msg: string) => say(msg, "info"),
   };
 }

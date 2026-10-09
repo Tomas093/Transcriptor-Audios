@@ -146,7 +146,7 @@ func newEnv(t *testing.T) *testEnv {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go worker.Run(ctx)
-	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg)}
+	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg), settings: NewSettingsStore(dir)}
 	srv := httptest.NewServer(api.Handler())
 	t.Cleanup(srv.Close)
 	return &testEnv{srv: srv, store: store, worker: worker, cfg: cfg, f: f, cancel: cancel}
