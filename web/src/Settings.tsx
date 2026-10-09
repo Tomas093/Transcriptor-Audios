@@ -123,9 +123,10 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
           }}
         >
           <fieldset className="dlg-group">
-            <legend>Audios de WhatsApp de escritorio (macOS)</legend>
+            <legend>Audios de WhatsApp de escritorio</legend>
             <p className="dlg-note">
               Copia solos a la carpeta de entrada los audios que WhatsApp ya guardó en tu disco. No se conecta a tu cuenta.
+              Lo que guardes aquí manda sobre el fichero <code>.env</code>.
             </p>
             <div className="dlg-choices" role="radiogroup" aria-label="Qué chats copiar">
               <label><input type="radio" name="mode" checked={wa!.mode === "off"} onChange={() => setMode("off")} /> No copiar nada</label>
@@ -155,7 +156,7 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
                   ) : null}
                   {detectSince && !detected && !status.running ? (
                     <span className="dlg-warn" role="alert">
-                      El vigilante no está en marcha, así que no puede detectar nada. En la Terminal: <code>make down &amp;&amp; make up</code> y luego <code>./scripts/whatsapp.sh diagnostico</code>.
+                      El vigilante no está en marcha, así que no puede detectar nada. Instálalo una vez: <code>make agente</code> (Mac) o <code>.\transcriptor.cmd agente</code> (Windows). En Mac, <code>./scripts/whatsapp.sh diagnostico</code> dice qué falla.
                     </span>
                   ) : null}
                   {detected ? (
@@ -215,7 +216,7 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
             )}
             {agentMissing && (
               <p className="dlg-warn" role="status">
-                Falta instalar el vigilante, una sola vez: en la Terminal, <code>make agente</code>.
+                Falta instalar el vigilante, una sola vez: <code>make agente</code> (Mac) o <code>.\transcriptor.cmd agente</code> (Windows).
               </p>
             )}
           </fieldset>
@@ -224,7 +225,7 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
             <span className={`dot dot-${status.running ? "ok" : "unknown"}`} aria-hidden="true" />
             {status.running
               ? `Vigilante ${status.host === "agent" ? "en segundo plano" : "activo"} · app ${status.stack === "on" ? "encendida" : "apagada"}${status.copied ? ` · ${status.copied} copiados` : ""}${status.lastAt ? ` · último ${ago(status.lastAt)}` : ""}`
-              : "Vigilante apagado (se enciende con «make up» o con el agente)."}
+              : "Vigilante apagado (se instala con «make agente» en Mac o «transcriptor.cmd agente» en Windows)."}
           </div>
           {status.error && <p className="dlg-warn" role="alert">{status.error}</p>}
           {error && <p className="dlg-warn" role="alert">{error}</p>}
