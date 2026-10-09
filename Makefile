@@ -4,6 +4,9 @@ endif
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+# Configuración opcional en un fichero .env (ver .env.example); lo de la línea de comandos manda sobre él.
+-include .env
+
 # --- Configuración (se puede cambiar: make up OLLAMA_MODEL=qwen2.5:3b) ---
 PORT            ?= 4747
 DATA_PATH       ?= $(HOME)/TranscriptorAudios
@@ -19,6 +22,7 @@ TZ_DETECT := $(shell readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||
 export TZ ?= $(if $(TZ_DETECT),$(TZ_DETECT),UTC)
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
+export WHATSAPP_CHATS WHATSAPP_BACKLOG_MIN
 export PORT DATA_PATH INBOX_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
 
 help: ## Muestra esta ayuda

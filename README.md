@@ -103,13 +103,24 @@ Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `ma
 
 #### Sin guardar nada a mano: audios de WhatsApp de escritorio (macOS, opcional)
 
-WhatsApp de escritorio ya deja en tu disco los audios que recibes o reproduces. Puedes pedirle al Transcriptor que **copie solos a `entrada` los audios de los chats que elijas**. No se conecta a WhatsApp ni a tu cuenta: solo copia los ficheros `.opus` de esa carpeta, nada más (no abre sus bases de datos), así que no hay riesgo para tu número.
+WhatsApp de escritorio ya deja en tu disco los audios que recibes o reproduces. Puedes pedirle al Transcriptor que **copie solos a `entrada` los audios de WhatsApp**, y de ahí se procesan solos. No se conecta a WhatsApp ni a tu cuenta: solo copia los ficheros `.opus` de esa carpeta (no abre sus bases de datos), así que no hay riesgo para tu número.
 
 1. **Permiso (una vez):** Ajustes del Sistema → Privacidad y seguridad → **Acceso total al disco** → activa **Terminal** (y **Transcriptor**, si enciendes con el ícono). macOS protege los datos de WhatsApp y sin esto da *Operation not permitted*.
-2. **Elige el chat:** `make whatsapp`. Te pide reproducir un audio de ese chat en WhatsApp y pulsar Enter; así sabe cuál es. Repite el comando para otro chat.
-3. Desde ahí, cada vez que enciendas (`make up` o el ícono) copia los audios **nuevos** de esos chats (los que lleguen después de encender) a `entrada`, con nombre por fecha y hora, y se procesan solos. Para incluir también los de los últimos 30 min: `make up WHATSAPP_BACKLOG_MIN=30`.
+2. **Qué copiar, en el fichero `.env`:** `cp .env.example .env` y edita (cambiar algo ahí es lo único que hace falta, sin tocar código):
+   ```
+   # todos los chats
+   WHATSAPP_CHATS=all
+   # o solo algunos (por ejemplo, el chat contigo mismo al que reenvías los audios)
+   WHATSAPP_CHATS=180839614816436@lid
+   # al encender, incluye también los audios de los últimos 60 minutos (0 = solo los nuevos)
+   WHATSAPP_BACKLOG_MIN=60
+   ```
+   Para saber el id de un chat: `make whatsapp`, reproduce un audio de ese chat en WhatsApp y pulsa Enter; te muestra su id (y también lo recuerda sin usar `.env`).
+3. Enciende (`make up` o el ícono). Desde ahí copia los audios de esos chats: los **de la última hora** y los que lleguen mientras esté encendido, con nombre por fecha y hora. Los más viejos se ignoran.
 
-`./scripts/whatsapp.sh estado` muestra qué vigila; `make whatsapp-off` deja de vigilar. Registro: `~/.transcriptor/whatsapp.log`. Ten en cuenta que es una carpeta interna de WhatsApp: si una actualización cambia dónde guarda los audios, dejará de copiarlos (el resto sigue funcionando).
+Dos formas de usarlo: con `WHATSAPP_CHATS=all` no tienes que hacer nada; con tu propio chat, reenvías ahí los audios que quieras procesar (WhatsApp permite reenviar varios a la vez) y solo esos se transcriben.
+
+`./scripts/whatsapp.sh estado` muestra qué vigila; `make whatsapp-off` quita la lista de `make whatsapp` (para dejar de vigilar, borra también `WHATSAPP_CHATS` del `.env`). Registro: `~/.transcriptor/whatsapp.log`. Solo se copian los audios que WhatsApp **ya guardó en el disco** (los que se descargaron solos o al reproducirlos). Es una carpeta interna de WhatsApp: si una actualización cambia dónde guarda los audios, dejará de copiarlos y el resto sigue funcionando.
 
 ### Sesiones
 
@@ -196,12 +207,14 @@ make setup up WHISPER_MODEL_FILE=ggml-large-v3-turbo-q5_0.bin   # Whisper más r
 
 ## 6. Configuración
 
-Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`):
+Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`). Para dejarlas fijas, ponlas en un fichero `.env` (`cp .env.example .env`); lo que escribas en la línea de comandos manda sobre él:
 
 | Variable | Por defecto | Qué es |
 |---|---|---|
 | `PORT` | `4747` | Puerto de la web |
 | `DATA_PATH` | `~/TranscriptorAudios` | Dónde se guardan las sesiones |
+| `WHATSAPP_CHATS` | — | macOS: `all` o ids de chats cuyos audios se copian a la entrada |
+| `WHATSAPP_BACKLOG_MIN` | `60` | macOS: al encender, incluye audios de los últimos N min (0 = solo nuevos) |
 | `INBOX_PATH` | `~/TranscriptorAudios/entrada` | Carpeta de entrada vigilada |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
 | `WHISPER_MODEL_FILE` | `ggml-large-v3.bin` | Modelo de Whisper (el más preciso, ~3 GB). Más rápido y liviano: `ggml-large-v3-turbo-q5_0.bin` |
