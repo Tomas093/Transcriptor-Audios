@@ -8,6 +8,8 @@ SHELL := /bin/bash
 -include .env
 
 # --- Configuración (se puede cambiar: make up OLLAMA_MODEL=qwen2.5:3b) ---
+# native: la app corre directamente en el Mac (rápida y liviana). docker: la app en Docker, como antes.
+RUNTIME         ?= native
 PORT            ?= 4747
 DATA_PATH       ?= $(HOME)/TranscriptorAudios
 INBOX_PATH      ?= $(DATA_PATH)/entrada
@@ -22,15 +24,16 @@ TZ_DETECT := $(shell readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||
 export TZ ?= $(if $(TZ_DETECT),$(TZ_DETECT),UTC)
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
-export PORT DATA_PATH INBOX_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
+export RUNTIME PORT DATA_PATH INBOX_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
 export WHATSAPP_CHATS WHATSAPP_BACKLOG_MIN BACKGROUND_ENABLED BACKGROUND_IDLE_MIN BACKGROUND_QUIT_DOCKER
 
 help: ## Muestra esta ayuda
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[1mmake %-8s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-setup: ## Instala y descarga todo lo necesario (una sola vez)
+setup: ## Instala y descarga todo lo necesario (una sola vez; repítelo tras actualizar)
 	@command -v brew >/dev/null || { echo "Instala Homebrew primero: https://brew.sh"; exit 1; }
-	@command -v docker >/dev/null || { echo "Instala Docker Desktop primero: https://www.docker.com/products/docker-desktop"; exit 1; }
+	@if [ "$(RUNTIME)" = docker ]; then command -v docker >/dev/null || { echo "Instala Docker Desktop primero: https://www.docker.com/products/docker-desktop"; exit 1; }; \
+	else for f in go node ffmpeg; do command -v $$f >/dev/null || brew install $$f; done; fi
 	brew list whisper-cpp >/dev/null 2>&1 || brew install whisper-cpp
 	@command -v "$${WHISPER_BIN:-whisper-server}" >/dev/null || { \
 	  echo; echo "Homebrew no instaló el binario 'whisper-server'. Compílalo (Metal viene activado en Mac):"; \
@@ -45,17 +48,24 @@ setup: ## Instala y descarga todo lo necesario (una sola vez)
 	./scripts/services.sh start
 	ollama pull $(OLLAMA_MODEL)
 	./scripts/services.sh stop
+	$(MAKE) build
 	@echo; echo "Listo. Arranca con: make up"
 
-up: check-port ## Levanta todo (Whisper + Ollama nativos y la app en Docker)
+build: ## Compila la app (lo hace solo `up` si cambió algo, p. ej. tras un git pull)
+	@if [ "$(RUNTIME)" = docker ]; then docker compose build; else ./scripts/app.sh build; fi
+
+up: check-port ## Levanta todo: la app, Whisper y Ollama
 	mkdir -p "$(DATA_PATH)" "$(INBOX_PATH)"
-	./scripts/services.sh start
-	docker compose up -d --build
+	@if [ "$(RUNTIME)" = docker ]; then \
+	  ./scripts/services.sh start && \
+	  { docker image inspect transcriptor:local >/dev/null 2>&1 || docker compose build; } && docker compose up -d; \
+	else ./scripts/app.sh up && ./scripts/whatsapp.sh start; fi
 	@echo; echo "Transcriptor listo en http://localhost:$(PORT)   (tus sesiones: $(DATA_PATH))"; echo "Carpeta de entrada: $(INBOX_PATH)   (todo audio que sueltes ahí se procesa solo; make entrada la abre)"
 	@if [ -z "$(NO_OPEN)" ] && command -v open >/dev/null; then open "http://localhost:$(PORT)"; fi
 
 check-port:
-	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx transcriptor; then \
+	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && ! lsof -nP -iTCP:$(PORT) -sTCP:LISTEN -Fc 2>/dev/null | grep -qx 'ctranscriptor' \
+	  && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx transcriptor; then \
 	  echo "El puerto $(PORT) ya está en uso por otra aplicación. Elige otro, por ejemplo: make up PORT=4748"; exit 1; fi
 
 entrada: ## Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)
@@ -77,21 +87,22 @@ app-off: ## Borra el ícono «Transcriptor»
 	./scripts/make-app.sh uninstall
 
 autostart: ## Arranca todo solo al iniciar sesión en el Mac (make autostart-off lo desactiva)
-	PORT=$(PORT) DATA_PATH="$(DATA_PATH)" OLLAMA_MODEL=$(OLLAMA_MODEL) WHISPER_THREADS=$(WHISPER_THREADS) RETENTION_DAYS=$(RETENTION_DAYS) ./scripts/autostart.sh install
+	@if [ "$(RUNTIME)" = docker ]; then ./scripts/autostart.sh install; else ./scripts/autostart.sh uninstall >/dev/null; ./scripts/app.sh autostart; fi
 
 autostart-off: ## Desactiva el arranque automático
-	./scripts/autostart.sh uninstall
+	./scripts/autostart.sh uninstall >/dev/null; ./scripts/app.sh autostart-off
 
 down: ## Baja todo y libera la memoria
-	docker compose down
+	./scripts/app.sh down
+	@if docker info >/dev/null 2>&1; then docker compose down; fi
 	./scripts/services.sh stop
 
 status: ## Estado de los servicios
-	@./scripts/services.sh status
-	@docker compose ps --format 'app: {{.State}} ({{.Status}})' 2>/dev/null || true
+	@if [ "$(RUNTIME)" = docker ]; then ./scripts/services.sh status; docker compose ps --format 'app: {{.State}} ({{.Status}})' 2>/dev/null || true; \
+	else ./scripts/app.sh status; fi
 
 logs: ## Logs de la app (Ctrl+C para salir)
-	docker compose logs -f --tail=100 app
+	@if [ "$(RUNTIME)" = docker ]; then docker compose logs -f --tail=100 app; else ./scripts/app.sh logs; fi
 
 doctor: ## Diagnóstico + prueba real con voz generada (pega la salida si algo falla)
 	./scripts/doctor.sh
@@ -117,4 +128,4 @@ dev: ## Desarrollo local sin Docker (API en :$(PORT), web con recarga en :5173)
 	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:$(PORT) go run .) & \
 	wait
 
-.PHONY: help setup up check-port entrada agente agente-off whatsapp-estado app app-off autostart autostart-off down status logs doctor stress bench purge test dev
+.PHONY: help setup build up check-port entrada agente agente-off whatsapp-estado app app-off autostart autostart-off down status logs doctor stress bench purge test dev
