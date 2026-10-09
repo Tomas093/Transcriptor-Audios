@@ -293,54 +293,19 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	// Dentro de una misma subida, orden natural por nombre (WhatsApp numera por fecha).
 	sort.SliceStable(items, func(i, j int) bool { return naturalLess(items[i].Name, items[j].Name) })
-	var added, skipped, replaced, process, drop []string
-	if !a.store.Update(id, func(s *Session) {
-		for _, it := range items {
-			dup, same := -1, -1
-			for i, ex := range s.Items {
-				if dup < 0 && ex.Hash != "" && ex.Hash == it.Hash {
-					dup = i
-				}
-				if same < 0 && ex.Name == it.Name {
-					same = i
-				}
-			}
-			switch {
-			case dup >= 0 && s.Items[dup].Status != StatusError:
-				// Mismo audio y ya procesado (o en curso): se deja el existente tal cual.
-				skipped = append(skipped, it.Name)
-				drop = append(drop, it.File)
-			case dup >= 0 || same >= 0:
-				// Mismo audio que había fallado, o mismo nombre con contenido nuevo: reemplaza en su sitio.
-				at := dup
-				if at < 0 {
-					at = same
-				}
-				drop = append(drop, s.Items[at].File)
-				s.Items[at] = it
-				replaced = append(replaced, it.Name)
-				process = append(process, it.ID)
-			default:
-				s.Items = append(s.Items, it)
-				added = append(added, it.Name)
-				process = append(process, it.ID)
-			}
-		}
-		if len(process) > 0 {
-			markGlobalPending(s)
-		}
-	}) {
+	var res mergeResult
+	if !a.store.Update(id, func(s *Session) { res = mergeItems(s, items) }) {
 		cleanup()
 		_ = os.RemoveAll(a.store.sessionDir(id)) // la sesión se borró durante la subida
 		writeErr(w, http.StatusNotFound, "sesión no encontrada")
 		return
 	}
-	for _, f := range drop {
+	for _, f := range res.drop {
 		_ = os.Remove(a.store.AudioPath(id, f))
 	}
 	status := http.StatusOK
-	if len(process) > 0 {
-		if err := a.worker.Enqueue(batch{session: id, items: process}); err != nil {
+	if len(res.process) > 0 {
+		if err := a.worker.Enqueue(batch{session: id, items: res.process}); err != nil {
 			writeErr(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -348,8 +313,51 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	snap, _ := a.store.Snapshot(id)
 	writeJSON(w, status, map[string]any{
-		"session": json.RawMessage(snap), "added": nonNil(added), "skipped": nonNil(skipped), "replaced": nonNil(replaced),
+		"session": json.RawMessage(snap), "added": nonNil(res.added), "skipped": nonNil(res.skipped), "replaced": nonNil(res.replaced),
 	})
+}
+
+type mergeResult struct{ added, skipped, replaced, process, drop []string }
+
+// mergeItems añade audios ya guardados en disco a una sesión: un audio idéntico a uno ya procesado se
+// descarta, uno que había fallado o con el mismo nombre pero otro contenido lo reemplaza en su sitio.
+// Debe llamarse dentro de store.Update. `drop` son los ficheros de audio que sobran y hay que borrar.
+func mergeItems(s *Session, items []*Item) (r mergeResult) {
+	for _, it := range items {
+		dup, same := -1, -1
+		for i, ex := range s.Items {
+			if dup < 0 && ex.Hash != "" && ex.Hash == it.Hash {
+				dup = i
+			}
+			if same < 0 && ex.Name == it.Name {
+				same = i
+			}
+		}
+		switch {
+		case dup >= 0 && s.Items[dup].Status != StatusError:
+			// Mismo audio y ya procesado (o en curso): se deja el existente tal cual.
+			r.skipped = append(r.skipped, it.Name)
+			r.drop = append(r.drop, it.File)
+		case dup >= 0 || same >= 0:
+			// Mismo audio que había fallado, o mismo nombre con contenido nuevo: reemplaza en su sitio.
+			at := dup
+			if at < 0 {
+				at = same
+			}
+			r.drop = append(r.drop, s.Items[at].File)
+			s.Items[at] = it
+			r.replaced = append(r.replaced, it.Name)
+			r.process = append(r.process, it.ID)
+		default:
+			s.Items = append(s.Items, it)
+			r.added = append(r.added, it.Name)
+			r.process = append(r.process, it.ID)
+		}
+	}
+	if len(r.process) > 0 {
+		markGlobalPending(s)
+	}
+	return r
 }
 
 func nonNil(s []string) []string {

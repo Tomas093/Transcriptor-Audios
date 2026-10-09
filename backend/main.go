@@ -28,6 +28,9 @@ func main() {
 	defer stop()
 
 	go worker.Run(ctx)
+	if cfg.InboxDir != "" {
+		go NewInbox(cfg.InboxDir, store, worker).Run(ctx)
+	}
 	go runRetention(ctx, store, cfg.retention())
 	for session, ids := range store.Pending() {
 		slog.Info("reanudando trabajo pendiente", "session", session, "audios", len(ids))

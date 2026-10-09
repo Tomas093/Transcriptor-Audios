@@ -24,6 +24,7 @@ type Config struct {
 	RetentionDays   int
 	MaxUploadBytes  int64
 	AllowedHosts    []string
+	InboxDir        string // carpeta vigilada; vacío = desactivada
 }
 
 func env(key, def string) string {
@@ -72,6 +73,7 @@ func loadConfig() Config {
 		RetentionDays:   envInt("RETENTION_DAYS", 1),
 		MaxUploadBytes:  int64(envInt("MAX_UPLOAD_MB", 1024)) << 20,
 		AllowedHosts:    splitList(env("ALLOWED_HOSTS", "localhost,127.0.0.1,::1")),
+		InboxDir:        env("INBOX_DIR", ""),
 	}
 }
 

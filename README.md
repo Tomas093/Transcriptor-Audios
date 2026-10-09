@@ -75,6 +75,16 @@ Al iniciar sesión abre Docker Desktop si hace falta, espera a que esté listo y
 3. **Lee.** Cada audio aparece como una ventana, con su texto y su resumen, en orden. Si subiste varios, arriba aparece el **resumen general**.
 4. Usa **Copiar texto / Copiar resumen / Copiar todo** o **Descargar** (Markdown) para llevarte lo que necesites.
 
+### Carpeta de entrada (sin abrir la web)
+
+Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `make entrada`). **Todo audio que dejes ahí se procesa solo**, sin tener que abrir la web ni arrastrar nada:
+
+- Guarda los audios de WhatsApp directamente ahí (clic derecho → *Guardar como…* → carpeta `entrada`), o cámbiale al navegador la carpeta de descargas.
+- Los audios que llegan con menos de 10 minutos de diferencia se agrupan en **una sola sesión** ("Entrada 05/10 19:30"), con su resumen general. Pasados 10 minutos se crea una sesión nueva.
+- Cuando termina de copiarlos, mueve los originales a `entrada/procesados/`. Si quieres, bórralos de ahí cuando quieras: ya están dentro de la sesión.
+- Si algo cae mientras la app está apagada, se procesa en cuanto la enciendas.
+- Un audio idéntico a uno ya procesado en esa sesión no se repite. Los archivos que no son audio se ignoran, y un archivo que aún se está descargando espera a terminar.
+
 ### Sesiones
 
 La barra lateral lista tus sesiones, como un chat. Cada vez que sueltas audios en "Nueva sesión" se crea una; puedes **seguir añadiendo audios** a una sesión existente.
@@ -122,6 +132,7 @@ Registros: `make logs` (la app) y `~/.transcriptor/whisper.log`, `~/.transcripto
 |---|---|
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
+| `make entrada` | Abre la carpeta de entrada |
 | `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
 | `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
@@ -158,6 +169,7 @@ Variables que acepta `make` (y el `docker-compose.yml`):
 |---|---|---|
 | `PORT` | `4747` | Puerto de la web |
 | `DATA_PATH` | `~/TranscriptorAudios` | Dónde se guardan las sesiones |
+| `INBOX_PATH` | `~/TranscriptorAudios/entrada` | Carpeta de entrada vigilada |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo de resumen |
 | `WHISPER_MODEL_FILE` | `ggml-large-v3.bin` | Modelo de Whisper (el más preciso, ~3 GB). Más rápido y liviano: `ggml-large-v3-turbo-q5_0.bin` |
 | `WHISPER_THREADS` | `4` | Hilos de Whisper |
