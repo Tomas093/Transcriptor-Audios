@@ -27,6 +27,7 @@ DETECT="$DATA_PATH/whatsapp-detect"
 SEENFILE="$STATE_DIR/whatsapp-seen"
 PIDFILE="$STATE_DIR/whatsapp.pid"      # vigilante que lanzó `make up`
 AGENTPID="$STATE_DIR/agent.pid"        # agente siempre activo
+AGENT_BASH="$STATE_DIR/bin/transcriptor-bash"  # copia de bash con el permiso (la crea make agente)
 AGENT_STARTED="$STATE_DIR/agent-started"       # existe si el agente encendió la app (y puede apagarla)
 DOCKER_BY_AGENT="$STATE_DIR/agent-docker"      # existe si el agente abrió Docker Desktop
 LOG="$STATE_DIR/whatsapp.log"
@@ -81,7 +82,9 @@ write_status() { # $1 = ahora
 }
 
 can_read_media() { ls "$MEDIA" >/dev/null 2>&1; }
-no_access_msg() { echo "Falta permiso: Ajustes del Sistema → Privacidad y seguridad → Acceso total al disco → activa ${BASH:-bash} (o Terminal, si lo ejecutas desde ahí)."; }
+no_access_msg() {
+  echo "Falta permiso de Acceso total al disco para ${BASH:-bash} (Ajustes del Sistema → Privacidad y seguridad). Si ya lo diste, reinicia el vigilante: make down && make up."
+}
 
 # --- Copia ------------------------------------------------------------------------------------
 # Copia un audio a la entrada con un nombre legible (fecha y hora), en dos pasos para que la app
@@ -173,6 +176,10 @@ run_loop() { # $1 = stack | agent
   log "vigilante ($HOST_KIND) en marcha → $INBOX"
   while :; do
     now="$(date +%s)"
+    if [[ "$HOST_KIND" == stack ]] && alive "$AGENTPID"; then
+      log "el agente en segundo plano ya vigila: este vigilante se retira"
+      rm -f "$PIDFILE"; exit 0
+    fi
     if reload_conf; then
       start=$((now - C_BACKLOG * 60))   # al cambiar la configuración, vuelve a mirar hacia atrás
       log "configuración: modo=$C_MODE chats=$C_CHATS atrás=${C_BACKLOG}min segundo plano=$BG_ENABLED"
@@ -218,6 +225,8 @@ run_loop() { # $1 = stack | agent
 agent() {
   alive "$AGENTPID" && { echo "El agente ya está en marcha (pid $(cat "$AGENTPID"))."; exit 0; }
   echo $$ >"$AGENTPID"
+  alive "$PIDFILE" && kill "$(cat "$PIDFILE")" 2>/dev/null   # que no haya dos vigilantes escribiendo el estado
+  rm -f "$PIDFILE"
   trap 'rm -f "$AGENTPID"; exit 0' INT TERM
   trap 'rm -f "$AGENTPID"' EXIT
   run_loop agent
@@ -226,7 +235,9 @@ agent() {
 start() {
   alive "$AGENTPID" && return 0   # el agente ya vigila (y copia) por su cuenta
   alive "$PIDFILE" && return 0
-  nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "$!"' -- "$SELF" vigilar >>"$LOG" 2>&1 &
+  # Si existe la copia de bash a la que `make agente` pidió el permiso, se usa esa (el permiso es por programa).
+  local interp=bash; [[ -x "$AGENT_BASH" ]] && interp="$AGENT_BASH"
+  nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "$!"' -- "$interp" "$SELF" vigilar >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
 }
 
