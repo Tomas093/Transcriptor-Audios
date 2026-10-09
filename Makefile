@@ -4,6 +4,7 @@ SHELL := /bin/bash
 # --- Configuración (se puede cambiar: make up OLLAMA_MODEL=qwen2.5:3b) ---
 PORT            ?= 4747
 DATA_PATH       ?= $(HOME)/TranscriptorAudios
+INBOX_PATH      ?= $(DATA_PATH)/entrada
 OLLAMA_MODEL    ?= qwen2.5:7b
 WHISPER_MODEL_FILE ?= ggml-large-v3.bin
 WHISPER_THREADS ?= 4
@@ -15,7 +16,7 @@ TZ_DETECT := $(shell readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||
 export TZ ?= $(if $(TZ_DETECT),$(TZ_DETECT),UTC)
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
-export PORT DATA_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
+export PORT DATA_PATH INBOX_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
 
 help: ## Muestra esta ayuda
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[1mmake %-8s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -40,15 +41,18 @@ setup: ## Instala y descarga todo lo necesario (una sola vez)
 	@echo; echo "Listo. Arranca con: make up"
 
 up: check-port ## Levanta todo (Whisper + Ollama nativos y la app en Docker)
-	mkdir -p "$(DATA_PATH)"
+	mkdir -p "$(DATA_PATH)" "$(INBOX_PATH)"
 	./scripts/services.sh start
 	docker compose up -d --build
-	@echo; echo "Transcriptor listo en http://localhost:$(PORT)   (tus sesiones: $(DATA_PATH))"
+	@echo; echo "Transcriptor listo en http://localhost:$(PORT)   (tus sesiones: $(DATA_PATH))"; echo "Carpeta de entrada: $(INBOX_PATH)   (todo audio que sueltes ahí se procesa solo; make entrada la abre)"
 	@if [ -z "$(NO_OPEN)" ] && command -v open >/dev/null; then open "http://localhost:$(PORT)"; fi
 
 check-port:
 	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx transcriptor; then \
 	  echo "El puerto $(PORT) ya está en uso por otra aplicación. Elige otro, por ejemplo: make up PORT=4748"; exit 1; fi
+
+entrada: ## Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)
+	mkdir -p "$(INBOX_PATH)" && open "$(INBOX_PATH)"
 
 app: ## Crea el ícono «Transcriptor» (Escritorio y Launchpad): doble clic para encender/apagar, sin Terminal
 	PORT=$(PORT) ICON=$(ICON) ./scripts/make-app.sh install
@@ -93,8 +97,8 @@ test: ## Tests del backend y chequeo de tipos de la web
 dev: ## Desarrollo local sin Docker (API en :$(PORT), web con recarga en :5173)
 	@trap 'kill 0' EXIT; \
 	(cd web && npm install --no-audit --no-fund && npm run dev) & \
-	(cd backend && DATA_DIR="$(DATA_PATH)" WEB_DIR=../web/dist TMP_DIR=/tmp/transcriptor \
+	(cd backend && DATA_DIR="$(DATA_PATH)" INBOX_DIR="$(INBOX_PATH)" WEB_DIR=../web/dist TMP_DIR=/tmp/transcriptor \
 	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:$(PORT) go run .) & \
 	wait
 
-.PHONY: help setup up check-port app app-off autostart autostart-off down status logs doctor stress bench purge test dev
+.PHONY: help setup up check-port entrada app app-off autostart autostart-off down status logs doctor stress bench purge test dev

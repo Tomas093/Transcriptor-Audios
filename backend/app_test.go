@@ -118,6 +118,7 @@ func newFakes(t *testing.T) *fakes {
 type testEnv struct {
 	srv    *httptest.Server
 	store  *Store
+	worker *Worker
 	cfg    Config
 	f      *fakes
 	cancel context.CancelFunc
@@ -148,7 +149,7 @@ func newEnv(t *testing.T) *testEnv {
 	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg)}
 	srv := httptest.NewServer(api.Handler())
 	t.Cleanup(srv.Close)
-	return &testEnv{srv: srv, store: store, cfg: cfg, f: f, cancel: cancel}
+	return &testEnv{srv: srv, store: store, worker: worker, cfg: cfg, f: f, cancel: cancel}
 }
 
 func makeAudio(t *testing.T, dir, name string) string {
