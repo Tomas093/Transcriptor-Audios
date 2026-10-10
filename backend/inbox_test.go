@@ -11,7 +11,7 @@ func TestInboxIngestsStableAudioIntoOneSession(t *testing.T) {
 	e := newEnv(t)
 	in := filepath.Join(t.TempDir(), "entrada")
 	os.MkdirAll(in, 0o755)
-	box := NewInbox(in, e.store, e.worker)
+	box := NewInbox(in, e.store, e.worker, nil)
 	clock := time.Now().Add(time.Hour)
 	box.now = func() time.Time { return clock }
 
@@ -67,7 +67,7 @@ func TestInboxIngestsStableAudioIntoOneSession(t *testing.T) {
 	}
 
 	// Pasada la ventana → sesión nueva.
-	clock = clock.Add(inboxWindow + time.Minute)
+	clock = clock.Add(61 * time.Minute) // la ventana por defecto es de 60 min
 	put("PTT-4.wav", tone(t, "c.wav", 1320))
 	box.scan()
 	box.scan()
@@ -79,7 +79,7 @@ func TestInboxIngestsStableAudioIntoOneSession(t *testing.T) {
 func TestInboxWaitsForGrowingFile(t *testing.T) {
 	e := newEnv(t)
 	in := t.TempDir()
-	box := NewInbox(in, e.store, e.worker)
+	box := NewInbox(in, e.store, e.worker, nil)
 	p := filepath.Join(in, "grande.wav")
 	old := time.Now().Add(-time.Minute)
 	os.WriteFile(p, []byte("1234"), 0o644)
@@ -100,4 +100,82 @@ func tone(t *testing.T, name string, hz int) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// Los audios de una misma hora se quedan en una sola sesión aunque la app se apague y se encienda
+// entre uno y otro (el agente en segundo plano lo hace), y la ventana se cambia en Configuración.
+func TestInboxGroupsAcrossRestartsAndHonorsWindow(t *testing.T) {
+	e := newEnv(t)
+	in := t.TempDir()
+	settings := NewSettingsStore(t.TempDir())
+	clock := time.Now().Add(time.Hour)
+	newBox := func() *Inbox { // «reiniciar»: un Inbox nuevo sin memoria, sobre el mismo almacén
+		b := NewInbox(in, e.store, e.worker, settings)
+		b.now = func() time.Time { return clock }
+		return b
+	}
+	old := time.Now().Add(-time.Minute)
+	drop := func(name string, hz int) {
+		p := filepath.Join(in, name)
+		os.WriteFile(p, tone(t, name+".wav", hz), 0o644)
+		os.Chtimes(p, old, old)
+	}
+	ingest := func() { b := newBox(); b.scan(); b.scan() }
+	setWindow := func(min int) {
+		s := defaultSettings()
+		s.Inbox.GroupMin = min
+		if err := settings.Set(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	setWindow(5)
+	drop("a.wav", 300)
+	ingest()
+	clock = clock.Add(4 * time.Minute) // menos de 5 min después, con la app «reiniciada»
+	drop("b.wav", 500)
+	ingest()
+	if n := len(e.store.List()); n != 1 {
+		t.Fatalf("sesiones = %d, quiero 1 (4 min < ventana de 5)", n)
+	}
+	clock = clock.Add(6 * time.Minute) // más de 5 min desde el último audio
+	drop("c.wav", 700)
+	ingest()
+	if n := len(e.store.List()); n != 2 {
+		t.Fatalf("sesiones = %d, quiero 2 (6 min > ventana de 5)", n)
+	}
+
+	// Con una ventana de una hora, el siguiente audio (a los 40 min) sigue en la misma sesión.
+	setWindow(60)
+	clock = clock.Add(40 * time.Minute)
+	drop("d.wav", 900)
+	ingest()
+	if n := len(e.store.List()); n != 2 {
+		t.Fatalf("sesiones = %d, quiero 2 (40 min < ventana de 60)", n)
+	}
+
+	// 0 = una sesión por tanda.
+	setWindow(0)
+	clock = clock.Add(time.Minute)
+	drop("e.wav", 1100)
+	ingest()
+	if n := len(e.store.List()); n != 3 {
+		t.Fatalf("sesiones = %d, quiero 3 (ventana 0)", n)
+	}
+}
+
+func TestLatestFromIgnoresManualSessions(t *testing.T) {
+	e := newEnv(t)
+	manual := e.store.Create("a mano")
+	_ = manual
+	if id := e.store.LatestFrom(inboxSource, time.Hour, time.Now()); id != "" {
+		t.Fatalf("una sesión creada a mano no debe recibir audios de la entrada: %s", id)
+	}
+	auto := e.store.CreateFrom("Entrada", inboxSource)
+	if id := e.store.LatestFrom(inboxSource, time.Hour, time.Now()); id != auto.ID {
+		t.Fatalf("debería encontrar la de la entrada: %q", id)
+	}
+	if id := e.store.LatestFrom(inboxSource, time.Hour, time.Now().Add(2*time.Hour)); id != "" {
+		t.Fatalf("fuera de la ventana no debe devolver nada: %q", id)
+	}
 }

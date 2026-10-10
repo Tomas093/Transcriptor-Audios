@@ -80,6 +80,7 @@ export type WhatsAppMode = "off" | "all" | "chats";
 export interface Settings {
   whatsapp: { mode: WhatsAppMode; chats: string[]; backlogMin: number };
   background: { enabled: boolean; idleMin: number; quitDocker: boolean };
+  inbox: { groupMin: number };
 }
 
 /** Lo que reporta el script nativo de macOS (scripts/whatsapp.sh). */
