@@ -100,7 +100,7 @@ Al iniciar sesión, macOS enciende la app (sin abrir el navegador); entra a `htt
 Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `make entrada`; en Windows, `%USERPROFILE%\TranscriptorAudios\entrada` y `.\transcriptor.cmd entrada`). **Todo audio que dejes ahí se procesa solo**, sin tener que abrir la web ni arrastrar nada:
 
 - Guarda los audios de WhatsApp directamente ahí (clic derecho → *Guardar como…* → carpeta `entrada`), o cámbiale al navegador la carpeta de descargas.
-- Los audios que llegan con menos de 10 minutos de diferencia se agrupan en **una sola sesión** ("Entrada 05/10 19:30"), con su resumen general. Pasados 10 minutos se crea una sesión nueva.
+- Los audios que llegan con poca diferencia entre uno y otro se agrupan en **una sola sesión** ("Entrada 05/10 19:30"), con su resumen general. Cuánto tiempo puede pasar entre un audio y el siguiente se cambia en **Configuración → Agrupar audios en una sesión** (60 minutos por defecto; cuenta desde el último audio de la sesión y sigue valiendo aunque la app se apague y se encienda entre uno y otro). Pasado ese tiempo sin audios nuevos, el siguiente empieza una sesión nueva; con 0, cada tanda es una sesión.
 - Cuando termina de copiarlos, mueve los originales a `entrada/procesados/`. Si quieres, bórralos de ahí cuando quieras: ya están dentro de la sesión.
 - Si algo cae mientras la app está apagada, se procesa en cuanto la enciendas.
 - Un audio idéntico a uno ya procesado en esa sesión no se repite. Los archivos que no son audio se ignoran, y un archivo que aún se está descargando espera a terminar.

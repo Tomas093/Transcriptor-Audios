@@ -215,6 +215,24 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
           </fieldset>
 
           <fieldset className="dlg-group">
+            <legend>Agrupar audios en una sesión</legend>
+            <label className="dlg-row">
+              Los audios que lleguen con menos de
+              <input
+                type="number"
+                min={0}
+                max={1440}
+                value={form.inbox.groupMin}
+                onChange={(e) => set((f) => ({ ...f, inbox: { groupMin: Math.max(0, Math.min(1440, Number(e.target.value) || 0)) } }))}
+              />
+              min entre uno y otro van a la misma sesión
+            </label>
+            <p className="dlg-note">
+              Vale para los que llegan a la carpeta de entrada (también los de WhatsApp). Cuenta desde el último audio de la sesión, así que mientras sigan llegando se van sumando; cuando pasa ese tiempo sin audios nuevos, el siguiente empieza una sesión nueva. 0 = una sesión por cada tanda.
+            </p>
+          </fieldset>
+
+          <fieldset className="dlg-group">
             <legend>Segundo plano</legend>
             <label className="dlg-check">
               <input type="checkbox" checked={bg!.enabled} onChange={(e) => set((f) => ({ ...f, background: { ...f.background, enabled: e.target.checked } }))} />
