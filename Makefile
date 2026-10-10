@@ -4,6 +4,9 @@ endif
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+# Configuración opcional en un fichero .env (ver .env.example); lo de la línea de comandos manda sobre él.
+-include .env
+
 # --- Configuración (se puede cambiar: make up OLLAMA_MODEL=qwen2.5:3b) ---
 PORT            ?= 4747
 DATA_PATH       ?= $(HOME)/TranscriptorAudios
@@ -20,6 +23,7 @@ export TZ ?= $(if $(TZ_DETECT),$(TZ_DETECT),UTC)
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
 export PORT DATA_PATH INBOX_PATH OLLAMA_MODEL WHISPER_MODEL_FILE WHISPER_THREADS RETENTION_DAYS WHISPER_BIN WHISPER_FLAGS
+export WHATSAPP_CHATS WHATSAPP_BACKLOG_MIN BACKGROUND_ENABLED BACKGROUND_IDLE_MIN BACKGROUND_QUIT_DOCKER
 
 help: ## Muestra esta ayuda
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[1mmake %-8s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -56,6 +60,15 @@ check-port:
 
 entrada: ## Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)
 	mkdir -p "$(INBOX_PATH)" && open "$(INBOX_PATH)"
+
+agente: ## Instala el agente en segundo plano: casi sin consumo, enciende todo cuando llega un audio (macOS; se configura en la web)
+	PORT=$(PORT) DATA_PATH="$(DATA_PATH)" INBOX_PATH="$(INBOX_PATH)" OLLAMA_MODEL=$(OLLAMA_MODEL) WHISPER_THREADS=$(WHISPER_THREADS) RETENTION_DAYS=$(RETENTION_DAYS) WHISPER_MODEL_FILE=$(WHISPER_MODEL_FILE) ./scripts/agent.sh install
+
+agente-off: ## Quita el agente en segundo plano
+	./scripts/agent.sh uninstall
+
+whatsapp-estado: ## Muestra qué audios de WhatsApp vigila y si tiene permiso
+	./scripts/agent.sh status
 
 app: ## Crea el ícono «Transcriptor» (Escritorio y Launchpad): doble clic para encender/apagar, sin Terminal
 	PORT=$(PORT) ICON=$(ICON) ./scripts/make-app.sh install
@@ -104,4 +117,4 @@ dev: ## Desarrollo local sin Docker (API en :$(PORT), web con recarga en :5173)
 	  WHISPER_URL=http://127.0.0.1:8178 OLLAMA_URL=http://127.0.0.1:11434 ADDR=127.0.0.1:$(PORT) go run .) & \
 	wait
 
-.PHONY: help setup up check-port entrada app app-off autostart autostart-off down status logs doctor stress bench purge test dev
+.PHONY: help setup up check-port entrada agente agente-off whatsapp-estado app app-off autostart autostart-off down status logs doctor stress bench purge test dev

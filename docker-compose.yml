@@ -21,6 +21,12 @@ services:
       OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5:7b}"
       INBOX_DIR: /inbox
       RETENTION_DAYS: "${RETENTION_DAYS:-1}" # 0 = no borrar nunca
+      # Valores por defecto de Configuración mientras no se guarde nada en la web (ver .env.example).
+      WHATSAPP_CHATS: "${WHATSAPP_CHATS:-}"
+      WHATSAPP_BACKLOG_MIN: "${WHATSAPP_BACKLOG_MIN:-60}"
+      BACKGROUND_ENABLED: "${BACKGROUND_ENABLED:-0}"
+      BACKGROUND_IDLE_MIN: "${BACKGROUND_IDLE_MIN:-10}"
+      BACKGROUND_QUIT_DOCKER: "${BACKGROUND_QUIT_DOCKER:-0}"
     volumes:
       - "${DATA_PATH:-./data}:/data" # tus sesiones: audios, textos y resúmenes
       - "${INBOX_PATH:-./data/entrada}:/inbox" # carpeta de entrada: lo que caiga ahí se procesa solo

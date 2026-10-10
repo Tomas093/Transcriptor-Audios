@@ -149,7 +149,7 @@ func newEnv(t *testing.T) *testEnv {
 	// Antes de que se borre el TempDir (las limpiezas van en orden inverso): parar el worker y
 	// esperar a que suelte la sesión que estuviera escribiendo.
 	t.Cleanup(func() { cancel(); <-done })
-	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg)}
+	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: NewWhisper(cfg), ollama: NewOllama(cfg), settings: NewSettingsStore(dir)}
 	srv := httptest.NewServer(api.Handler())
 	t.Cleanup(srv.Close)
 	return &testEnv{srv: srv, store: store, worker: worker, cfg: cfg, f: f, cancel: cancel}

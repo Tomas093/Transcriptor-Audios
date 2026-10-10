@@ -31,11 +31,14 @@ make setup
 
 ### En Windows
 
-**Necesitas:** Windows 10/11 de 64 bits, [Docker Desktop](https://www.docker.com/products/docker-desktop) **abierto** y `winget` (viene con Windows 11). Con una GPU NVIDIA va mucho más rápido; sin ella funciona en CPU.
+**Necesitas:** Windows 10/11 de 64 bits, [Docker Desktop](https://www.docker.com/products/docker-desktop) **abierto**, [Git](https://git-scm.com/download/win) (o descarga el ZIP del repositorio) y `winget` (viene con Windows 11). Con una GPU NVIDIA va mucho más rápido; sin ella funciona en CPU.
 
-En PowerShell o CMD, dentro de la carpeta del proyecto:
+En PowerShell:
 
 ```powershell
+git clone https://github.com/Tomas093/Transcriptor-Audios.git
+cd Transcriptor-Audios
+git checkout claude/exciting-knuth-1qnu23
 .\transcriptor.cmd setup
 ```
 
@@ -93,13 +96,77 @@ Al iniciar sesión abre Docker Desktop si hace falta, espera a que esté listo y
 
 ### Carpeta de entrada (sin abrir la web)
 
-Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `make entrada`). **Todo audio que dejes ahí se procesa solo**, sin tener que abrir la web ni arrastrar nada:
+Al encender, se crea la carpeta `~/TranscriptorAudios/entrada` (la abres con `make entrada`; en Windows, `%USERPROFILE%\TranscriptorAudios\entrada` y `.\transcriptor.cmd entrada`). **Todo audio que dejes ahí se procesa solo**, sin tener que abrir la web ni arrastrar nada:
 
 - Guarda los audios de WhatsApp directamente ahí (clic derecho → *Guardar como…* → carpeta `entrada`), o cámbiale al navegador la carpeta de descargas.
 - Los audios que llegan con menos de 10 minutos de diferencia se agrupan en **una sola sesión** ("Entrada 05/10 19:30"), con su resumen general. Pasados 10 minutos se crea una sesión nueva.
 - Cuando termina de copiarlos, mueve los originales a `entrada/procesados/`. Si quieres, bórralos de ahí cuando quieras: ya están dentro de la sesión.
 - Si algo cae mientras la app está apagada, se procesa en cuanto la enciendas.
 - Un audio idéntico a uno ya procesado en esa sesión no se repite. Los archivos que no son audio se ignoran, y un archivo que aún se está descargando espera a terminar.
+
+#### Sin guardar nada a mano: audios de WhatsApp de escritorio (opcional)
+
+> **En Windows** es distinto: mira [Windows: agente y WhatsApp](#windows-agente-y-whatsapp) más abajo.
+
+WhatsApp de escritorio ya deja en tu disco los audios que recibes o reproduces. El Transcriptor puede **copiarlos solo a `entrada`** (y de ahí se procesan solos). No se conecta a WhatsApp ni a tu cuenta: solo copia los ficheros `.opus` de esa carpeta (no abre sus bases de datos), así que no hay riesgo para tu número.
+
+Todo se configura **desde la web**: botón **Configuración** (abajo a la izquierda).
+
+1. **Agente y permiso (una vez):** `make agente` y, en Ajustes del Sistema → Privacidad y seguridad → **Acceso total al disco**, añade `~/.transcriptor/bin/transcriptor-agent` (ver [abajo](#que-escuche-en-segundo-plano-y-se-encienda-solo)). macOS protege los datos de WhatsApp; sin el permiso la web muestra un aviso con lo que falta.
+2. **Qué copiar:** *Todos los chats*, o *Solo estos chats* (por ejemplo, el chat contigo mismo al que reenvías los audios que quieras procesar; WhatsApp permite reenviar varios a la vez). Para añadir un chat: **Detectar chat**, reproduce un audio de ese chat en WhatsApp y pulsa **Añadir**.
+3. **Hacia atrás:** al encender, también procesa los audios de los últimos N minutos (60 por defecto; 0 = solo los nuevos). Los más viejos se ignoran.
+4. **Dejarlo fijo en el `.env` (opcional):** `WHATSAPP_CHATS=<id>` (o `all`), `WHATSAPP_BACKLOG_MIN`, `BACKGROUND_ENABLED=1`, `BACKGROUND_IDLE_MIN` (ver `.env.example`). Son los valores por defecto: si guardas algo en la web, manda lo de la web.
+
+Los audios se copian con nombre por fecha y hora. Solo se copian los que WhatsApp **ya guardó en el disco**: los que llegan a un chat (también los **reenviados**, aunque conserven la fecha del original). Reproducir un audio viejo no lo vuelve a copiar. Es una carpeta interna de WhatsApp: si una actualización cambia dónde guarda los audios, dejará de copiarlos y el resto sigue funcionando.
+
+##### Que escuche en segundo plano y se encienda solo
+
+Con `make up` el vigilante funciona mientras todo está encendido. Si quieres que **escuche siempre** y encienda todo **solo cuando llegue un audio**:
+
+```bash
+make agente        # una sola vez
+```
+
+y en **Configuración → Segundo plano** activa *Escuchar en segundo plano*. Entonces:
+
+- Un vigilante muy liviano arranca al iniciar sesión y mira la carpeta cada 30 s (prioridad mínima, sin GPU). **Con todo apagado, eso es lo único que consume**: medido, unos 4,5 MB de memoria y 0,3 s de CPU cada 3 minutos (0,2 % de un núcleo). En el Monitor de Actividad son `transcriptor-agent` y `bash` (`whatsapp.sh agent`).
+- Cuando llega un audio nuevo: copia el audio, enciende Docker, Whisper y Ollama, se procesa y aparece la sesión. Tarda entre 30 s y 1-2 min en estar listo (arrancar Docker y cargar el modelo).
+- Tras **N minutos sin actividad** (10 por defecto, configurable) apaga todo y libera la memoria. Opcional: cerrar también Docker Desktop (solo si lo abrió él y no hay otros contenedores en marcha).
+- Si enciendes tú (`make up` o el ícono), el agente no lo apaga: solo apaga lo que él encendió.
+- El agente necesita *Acceso total al disco*, pero solo para un lanzador mínimo (`~/.transcriptor/bin/transcriptor-agent`, ~30 líneas en `scripts/agent-launcher.c`) que `make agente` compila y firma en tu Mac (requiere `clang`: `xcode-select --install`). Así el permiso no se le da a todo `/bin/bash`. `make agente` te dice qué binario agregar; después `launchctl kickstart -k gui/$(id -u)/com.transcriptor.agent`. Si no quieres darlo, no instales el agente: `make up`, el ícono y la carpeta `entrada` funcionan sin él.
+- `make whatsapp-estado` muestra qué vigila; `make agente-off` lo quita. Registro: `~/.transcriptor/whatsapp.log`. Si algo no anda: `./scripts/whatsapp.sh diagnostico`.
+
+#### Windows: agente y WhatsApp
+
+La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una ventana (WebView2) y **puede que no guarde los audios como archivos**. Por eso en Windows hay dos piezas:
+
+1. **Averiguar si tu WhatsApp guarda los audios** (prueba guiada de 2 minutos; solo lee, no cambia nada):
+
+   ```powershell
+   .\transcriptor.cmd whatsapp-spike
+   ```
+
+   Te pide que te llegue un audio nuevo (por ejemplo, reenviándotelo desde el móvil) y que lo escuches en WhatsApp del PC. Después busca en las carpetas de WhatsApp, **también dentro del caché de la app nueva**, y termina con un **RESULTADO**:
+   - **SÍ** (archivos normales): pon su carpeta en el `.env` como `WHATSAPP_MEDIA=...` y `WHATSAPP_CHATS=all`; el agente los copiará solo.
+   - **SÍ, DENTRO DEL CACHÉ**: saca el audio a `%TEMP%\transcriptor-spike\audio-1.opus` para que compruebes que es el que escuchaste. Pásale la salida a quien mantiene el proyecto: copiarlos solos desde el caché aún no está hecho.
+   - **NO**: esta versión no lo deja en el disco; usa *Descargar / Guardar como* → carpeta `entrada` (punto 2).
+
+   En Windows no hay forma fiable de saber de qué chat es cada audio, así que se copian **todos**. (`.\transcriptor.cmd whatsapp-diagnostico` es la versión rápida: solo lista los archivos nuevos de los últimos 15 minutos.)
+
+2. **El agente en segundo plano** (no necesita permisos de administrador):
+
+   ```powershell
+   .\transcriptor.cmd agente        # una sola vez; .\transcriptor.cmd agente-off lo quita
+   ```
+
+   Crea un acceso directo en la carpeta Inicio de Windows, así que arranca solo al iniciar sesión, sin ventana y con prioridad baja. Activa *Escuchar en segundo plano* en la web (Configuración) o pon `BACKGROUND_ENABLED=1` en el `.env`. Entonces:
+   - **Cuando cae un audio en la carpeta `entrada`** (en WhatsApp: clic derecho sobre el audio → *Descargar* / *Guardar como…* → carpeta `%USERPROFILE%\TranscriptorAudios\entrada`), abre Docker Desktop si hace falta, enciende todo y el audio se procesa solo.
+   - Si encontró la carpeta de WhatsApp (punto 1), además copia ahí sus audios nuevos.
+   - Tras N minutos sin actividad apaga lo que encendió él.
+   - No usa CPU mientras espera (lo despierta Windows cuando aparece un archivo), pero PowerShell ocupa unas decenas de MB de memoria.
+   - Registro: `%USERPROFILE%\.transcriptor\agente.log`.
+
+> **Sin probar en un Windows real todavía:** el agente, `whatsapp-spike` y `whatsapp-diagnostico` se probaron en macOS con PowerShell 7 (copia, filtro por tipo de archivo, detección, que un error no lo tire, y extracción de audios reales de WhatsApp metidos en archivos de caché simulados, byte a byte iguales), no con Windows PowerShell 5.1, ni con la app real de WhatsApp para Windows, ni con Docker Desktop de Windows. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
 
 ### Sesiones
 
@@ -148,13 +215,17 @@ Registros: `make logs` (la app) y `~/.transcriptor/whisper.log`, `~/.transcripto
 
 ## 4. Comandos
 
-En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart` y `stress`, que son solo de macOS).
+En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart`, `stress` y `whatsapp-estado`, que son solo de macOS).
 
 | Comando | Qué hace |
 |---|---|
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
 | `make entrada` | Abre la carpeta de entrada |
+| `make agente` / `make agente-off` | Instala / quita el vigilante en segundo plano que enciende todo cuando llega un audio (se configura en la web o en el `.env`) |
+| `.\transcriptor.cmd whatsapp-spike` | Solo Windows: prueba guiada que dice si (y dónde) WhatsApp guarda los audios, y los extrae si están en su caché |
+| `.\transcriptor.cmd whatsapp-diagnostico` | Solo Windows: muestra dónde guarda WhatsApp los audios (ejecútalo justo después de recibir uno) |
+| `make whatsapp-estado` | Muestra qué audios de WhatsApp vigila y si tiene permiso |
 | `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
 | `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
@@ -185,7 +256,7 @@ make setup up WHISPER_MODEL_FILE=ggml-large-v3-turbo-q5_0.bin   # Whisper más r
 
 ## 6. Configuración
 
-Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`):
+Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`). Para dejarlas fijas, ponlas en un fichero `.env` (`cp .env.example .env`, en Windows `copy .env.example .env`); lo que escribas en la línea de comandos manda sobre él:
 
 | Variable | Por defecto | Qué es |
 |---|---|---|
@@ -199,6 +270,11 @@ Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`):
 | `RETENTION_DAYS` | `1` | Días sin actividad hasta el borrado automático (`0` = nunca) |
 | `WHISPER_BIN` | — | Ruta a tu propio `whisper-server` |
 | `WHISPER_GPU` | `auto` | Solo Windows: `cuda` o `cpu` fuerzan qué compilación de whisper.cpp descarga `setup` (la reemplaza si ya había otra) |
+| `WHATSAPP_CHATS` | — | Chats cuyos audios se copian solos: `all` o ids separados por comas (por defecto; la web manda) |
+| `WHATSAPP_BACKLOG_MIN` | `60` | Al encender, incluir audios de WhatsApp de los últimos N minutos |
+| `BACKGROUND_ENABLED` | `0` | `1` = el agente enciende todo cuando llega un audio |
+| `BACKGROUND_IDLE_MIN` | `10` | Minutos sin actividad hasta que el agente apaga todo |
+| `WHATSAPP_MEDIA` | la de WhatsApp | Carpeta de audios de WhatsApp (en Windows, la que encuentre `whatsapp-spike`) |
 | `TZ` | la del sistema | Zona horaria del contenedor (en Windows se convierte sola; si sale mal: `TZ=America/Argentina/Buenos_Aires`) |
 
 Avanzado (variables de la app): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (`12288`), `MAX_UPLOAD_MB` (`1024`), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; protege contra ataques de *DNS rebinding*).
@@ -222,8 +298,9 @@ Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (wh
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
 web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en web/src/styles/win95.css)
-scripts/   launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
-           transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench…); se usa con transcriptor.cmd
+scripts/   whatsapp.sh + agent.sh (copia de audios de WhatsApp y agente en segundo plano), launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
+           agent-launcher.c: lanzador mínimo del agente en Mac (el único programa con Acceso total al disco)
+           transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench, agente, whatsapp-spike…); se usa con transcriptor.cmd
 Dockerfile, docker-compose.yml, Makefile
 PRODUCT.md contexto de producto y diseño
 ```
@@ -233,4 +310,5 @@ PRODUCT.md contexto de producto y diseño
 - **Probado en un Mac real** (Apple M4 Max, 36 GB): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
 - **Probado en Windows** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Docker Desktop 28): `setup`, `up` y `doctor` completos con **RESULTADO: OK**, con Whisper en GPU (CUDA) y Ollama reales: transcripción exacta, resúmenes por audio y general, 3 subidas simultáneas (42 s) y detección de repetidos; 2 audios cortos en 76 s en frío (incluye cargar `qwen2.5:7b`), GPU al 99 % y 3,8 GB de VRAM. Se midió con el modelo turbo, antes de que `large-v3` pasara a ser el modelo por defecto.
 - **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (escritorio, móvil, errores) con auditoría de accesibilidad sin violaciones.
+- **WhatsApp en macOS** (macOS 27, WhatsApp de escritorio): copia de audios propios, de otros y **reenviados**, detección de chat y agente con su propio permiso. Ciclo completo en segundo plano con todo apagado: un audio reenviado desde el móvil se copió a los 12 s, encendió todo, quedó transcrito y resumido en menos de 1 min, y todo se apagó solo al minuto sin actividad. Vigilante en reposo: ~4,5 MB y 0,3 s de CPU cada 3 min. El agente de **Windows** está sin probar en Windows (ver arriba).
 - **Sin medir objetivamente:** la temperatura sostenida con audios muy largos. Para eso está `make stress`.

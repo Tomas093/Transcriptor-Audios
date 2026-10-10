@@ -74,3 +74,29 @@ export function infoOf(s: Session): SessionInfo {
     rev: s.rev,
   };
 }
+
+export type WhatsAppMode = "off" | "all" | "chats";
+
+export interface Settings {
+  whatsapp: { mode: WhatsAppMode; chats: string[]; backlogMin: number };
+  background: { enabled: boolean; idleMin: number; quitDocker: boolean };
+}
+
+/** Lo que reporta el script nativo de macOS (scripts/whatsapp.sh). */
+export interface WhatsAppStatus {
+  running: boolean;
+  host: "agent" | "stack" | "";
+  stack: "on" | "off" | "";
+  updatedAt: number;
+  error: string;
+  lastChat: string;
+  lastAt: number;
+  detected: string;
+  detectedAt: number;
+  copied: number;
+}
+
+export interface SettingsPayload {
+  settings: Settings;
+  whatsapp: WhatsAppStatus;
+}

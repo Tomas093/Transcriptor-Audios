@@ -37,7 +37,7 @@ func main() {
 		_ = worker.Enqueue(batch{session: session, items: ids})
 	}
 
-	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: whisper, ollama: ollama}
+	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: whisper, ollama: ollama, settings: NewSettingsStore(cfg.DataDir)}
 	srv := &http.Server{Addr: cfg.Addr, Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()

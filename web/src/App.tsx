@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Composer, GlobalBlock, ItemBlock, SessionHeader, Sidebar, Welcome } from "./components";
 import { Icon } from "./icons";
+import { SettingsDialog } from "./Settings";
 import { navigate, useApp } from "./useApp";
 
 export default function App() {
   const app = useApp();
   const { session, activeId, health } = app;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [announce, setAnnounce] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -108,7 +110,12 @@ export default function App() {
         onDelete={(id) => void app.remove(id)}
         onNew={newSession}
         onClose={() => setMenuOpen(false)}
+        onSettings={() => {
+          setMenuOpen(false);
+          setSettingsOpen(true);
+        }}
       />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={app.notify} />
 
       <main className="main">
         {session ? (

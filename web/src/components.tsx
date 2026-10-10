@@ -65,8 +65,9 @@ export function Sidebar(props: {
   onDelete: (id: string) => void;
   onNew: () => void;
   onClose: () => void;
+  onSettings: () => void;
 }) {
-  const { list, activeId, health, connected, open, onSelect, onDelete, onNew, onClose } = props;
+  const { list, activeId, health, connected, open, onSelect, onDelete, onNew, onClose, onSettings } = props;
   const retention = health?.retentionDays ?? 1;
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -161,6 +162,9 @@ export function Sidebar(props: {
           ))}
         </nav>
         <footer className="side-foot">
+          <button type="button" className="btn btn-sm btn-block side-settings" onClick={onSettings}>
+            <Icon name="sliders" size={14} /> Configuración
+          </button>
           <Service name="Whisper" ok={health?.whisper.ok} unknown={!health} title={health?.whisper.error} />
           <Service
             name={`Ollama${health?.ollama.model ? ` · ${health.ollama.model}` : ""}`}

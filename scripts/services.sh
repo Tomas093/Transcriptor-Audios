@@ -71,8 +71,8 @@ status() {
 }
 
 case "${1:-}" in
-  start) start_whisper; start_ollama ;;
-  stop) stop_whisper; stop_ollama ;;
+  start) start_whisper; start_ollama; "$(dirname "$0")/whatsapp.sh" start ;;
+  stop) "$(dirname "$0")/whatsapp.sh" stop; stop_whisper; stop_ollama ;;
   status) status ;;
   *) echo "Uso: $0 {start|stop|status}" >&2; exit 2 ;;
 esac
