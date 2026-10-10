@@ -3,6 +3,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 import "./styles/win95.css";
+import "./styles/skins.css";
+import { applyStyle, currentStyle } from "./theme";
+
+applyStyle(currentStyle(), false);
 
 class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
