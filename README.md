@@ -169,6 +169,10 @@ La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una
 
 > **Sin probar en un Windows real todavía:** el agente, `whatsapp-spike` y `whatsapp-diagnostico` se probaron en macOS con PowerShell 7 (copia, filtro por tipo de archivo, detección, que un error no lo tire, y extracción de audios reales de WhatsApp metidos en archivos de caché simulados, byte a byte iguales), no con Windows PowerShell 5.1, ni con la app real de WhatsApp para Windows, ni con Docker Desktop de Windows. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
 
+### Cambiar el estilo de la app
+
+**Configuración → Estilo de la app** (abajo a la izquierda en la barra lateral). Hay 15, todos con la misma estructura: Windows 95 (el de siempre), Neo-brutalismo crema y azul, **Albiceleste** (camiseta y bandera), **El 10 (Qatar)** (negro y dorado), **Taxi porteño**, **Cuaderno** (hoja rayada con post-its), **Ticket** (de caja), Bauhaus (color y negro), Swiss, Memphis, Periódico y dos Brutalismos. Se aplica al instante y se recuerda en ese navegador. Para probar uno sin guardarlo: `http://localhost:4747/?style=albiceleste`.
+
 ### Sesiones
 
 La barra lateral lista tus sesiones, como un chat. Cada vez que sueltas audios en "Nueva sesión" se crea una; puedes **seguir añadiendo audios** a una sesión existente.
@@ -300,7 +304,7 @@ Navegador ──► transcriptor (API en Go + web en React) ──► Whisper (w
 
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
-web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en web/src/styles/win95.css)
+web/       React + Vite + TypeScript (CSS propio; Windows 95 por defecto en web/src/styles/win95.css y otros estilos en web/src/styles/skins.css)
 scripts/   whatsapp.sh + agent.sh (copia de audios de WhatsApp y agente en segundo plano), launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
            agent-launcher.c: lanzador mínimo del agente en Mac (el único programa con Acceso total al disco)
            transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench, agente, whatsapp-spike…); se usa con transcriptor.cmd

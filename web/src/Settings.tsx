@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { Icon } from "./icons";
+import { SKINS, applyStyle, currentStyle, type SkinId } from "./theme";
 import type { Settings, WhatsAppMode, WhatsAppStatus } from "./types";
 
 const EMPTY: WhatsAppStatus = {
@@ -26,6 +27,7 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
   const [status, setStatus] = useState<WhatsAppStatus>(EMPTY);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [skin, setSkin] = useState<SkinId>(currentStyle);
   const [detectSince, setDetectSince] = useState(0); // unix de cuando se pulsó «Detectar»; 0 = no activo
   const loaded = useRef(false);
 
@@ -122,6 +124,32 @@ export function SettingsDialog({ open, onClose, onSaved }: { open: boolean; onCl
             void save();
           }}
         >
+          <fieldset className="dlg-group">
+            <legend>Estilo de la app</legend>
+            <div className="skin-grid" role="radiogroup" aria-label="Estilo visual">
+              {SKINS.map((k) => (
+                <label key={k.id} className={`skin ${skin === k.id ? "on" : ""}`} title={k.note}>
+                  <input
+                    type="radio"
+                    name="skin"
+                    checked={skin === k.id}
+                    onChange={() => {
+                      setSkin(k.id);
+                      applyStyle(k.id);
+                    }}
+                  />
+                  <span className="skin-sw" aria-hidden="true">
+                    {k.sw.map((c) => (
+                      <i key={c} style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="skin-name">{k.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="dlg-note">Se aplica al instante y se recuerda en este navegador.</p>
+          </fieldset>
+
           <fieldset className="dlg-group">
             <legend>Audios de WhatsApp de escritorio</legend>
             <p className="dlg-note">
