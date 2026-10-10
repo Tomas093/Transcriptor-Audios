@@ -34,6 +34,7 @@ function Cfg([string]$name, $def) {
 
 # --- Configuración (mismos nombres y valores por defecto que en macOS) ---
 $Root         = Split-Path -Parent $PSScriptRoot
+$Runtime      = Cfg 'RUNTIME' 'native'      # native: la app corre directa en Windows; docker: en Docker Desktop
 $Port         = Cfg 'PORT' '4747'
 $DataPath     = Cfg 'DATA_PATH' (Join-Path $env:USERPROFILE 'TranscriptorAudios')
 $InboxPath    = Cfg 'INBOX_PATH' (Join-Path $DataPath 'entrada')   # carpeta vigilada
@@ -52,6 +53,9 @@ $ModelUrl     = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$Mode
 $WhisperUrl   = "http://127.0.0.1:$WhisperPort/"
 $OllamaUrl    = "http://127.0.0.1:$OllamaPort/api/tags"
 $Base         = "http://127.0.0.1:$Port"
+$AppBin       = Join-Path $StateDir 'bin\transcriptor.exe'
+$AppWeb       = Join-Path $StateDir 'web'
+$AppPid       = Join-Path $StateDir 'app.pid'
 New-Item -ItemType Directory -Force $StateDir | Out-Null
 
 function Fail([string]$msg) { Write-Host $msg -ForegroundColor Red; exit 1 }
@@ -217,6 +221,93 @@ function Stop-Services {
 function Show-Status {
   if (Up $WhisperUrl) { Write-Host 'whisper-server: listo' } else { Write-Host 'whisper-server: parado' }
   if (Up $OllamaUrl) { Write-Host 'ollama:         listo' } else { Write-Host 'ollama:         parado' }
+}
+
+# --- La app en modo nativo: un solo proceso (transcriptor.exe) que sirve la web y arranca/apaga
+# Whisper y Ollama. Se compila en setup y, si cambió algo (p. ej. tras un git pull), en up.
+
+# winget instala con el PATH nuevo solo para terminales nuevas: lo releemos del registro.
+function Refresh-Path {
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+function WingetExe {
+  $w = (Get-Command 'winget' -ErrorAction SilentlyContinue).Source
+  if (-not $w -and (Test-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe")) { $w = "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe" }
+  return $w
+}
+function Ensure-Tool([string]$cmd, [string]$id, [string]$what) {
+  if (Has $cmd) { return }
+  $winget = WingetExe
+  if (-not $winget) { Fail "Falta $what. Instálalo (winget install $id) y vuelve a ejecutar setup." }
+  Write-Host "Instalando $what con winget…"
+  & $winget install --id $id -e --accept-source-agreements --accept-package-agreements; Check "La instalación de $what"
+  Refresh-Path
+  if (-not (Has $cmd)) { Fail "$what se instaló pero no lo encuentro: cierra y abre la terminal y vuelve a ejecutar setup." }
+}
+
+function Newer([string[]]$paths, [string]$than) {
+  if (-not (Test-Path $than)) { return $true }
+  $t = (Get-Item $than).LastWriteTime
+  foreach ($p in $paths) {
+    if (Get-ChildItem $p -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $t } | Select-Object -First 1) { return $true }
+  }
+  return $false
+}
+function Build-App {
+  if (Newer @((Join-Path $Root 'backend')) $AppBin) {
+    if (-not (Has 'go')) { Fail 'Falta Go. Ejecuta: .\transcriptor.cmd setup' }
+    Write-Host 'Compilando la app…'
+    New-Item -ItemType Directory -Force (Split-Path $AppBin) | Out-Null
+    Push-Location (Join-Path $Root 'backend')
+    try { $env:CGO_ENABLED = '0'; go build -trimpath -ldflags='-s -w' -o "$AppBin.new" .; Check 'go build' } finally { Pop-Location }
+    Move-Item -Force "$AppBin.new" $AppBin
+  }
+  $web = Join-Path $Root 'web'
+  if (Newer @((Join-Path $web 'src'), (Join-Path $web 'index.html'), (Join-Path $web 'package-lock.json')) (Join-Path $AppWeb 'index.html')) {
+    if (-not (Has 'npm.cmd')) { Fail 'Falta Node.js. Ejecuta: .\transcriptor.cmd setup' }
+    Write-Host 'Compilando la web…'
+    Push-Location $web
+    try { npm.cmd ci --no-audit --no-fund --silent; Check 'npm ci'; npm.cmd run build --silent; Check 'npm run build' } finally { Pop-Location }
+    if (Test-Path $AppWeb) { Remove-Item -Recurse -Force $AppWeb }
+    Copy-Item -Recurse (Join-Path $web 'dist') $AppWeb
+  }
+}
+
+function AppAlive {
+  if (-not (Test-Path $AppPid)) { return $false }
+  $id = 0; [int]::TryParse((Get-Content $AppPid -TotalCount 1), [ref]$id) | Out-Null
+  $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+  return [bool]($p -and $p.ProcessName -eq 'transcriptor')
+}
+
+function Start-App {
+  Build-App
+  if (-not (Test-Path $Model)) { Fail "Falta el modelo $Model. Ejecuta: .\transcriptor.cmd setup" }
+  $bin = WhisperBin; if (-not $bin) { Fail 'Falta whisper-server. Ejecuta: .\transcriptor.cmd setup' }
+  $oll = OllamaExe; if (-not $oll) { Fail 'Falta Ollama. Ejecuta: .\transcriptor.cmd setup' }
+  if (Up "$Base/api/health") { Write-Host 'Ya estaba encendido'; return }
+  # El hijo hereda estas variables: así sabe dónde está todo.
+  $env:ADDR = "127.0.0.1:$Port"; $env:DATA_DIR = $DataPath; $env:INBOX_DIR = $InboxPath; $env:WEB_DIR = $AppWeb
+  $env:TMP_DIR = Join-Path $StateDir 'tmp'; $env:LOG_DIR = $StateDir; $env:MANAGE_SERVICES = '1'
+  $env:WHISPER_URL = "http://127.0.0.1:$WhisperPort"; $env:OLLAMA_URL = "http://127.0.0.1:$OllamaPort"
+  $env:WHISPER_BIN = $bin; $env:WHISPER_MODEL = $Model; $env:OLLAMA_BIN = $oll
+  $env:WHISPER_THREADS = $Threads; $env:WHISPER_FLAGS = $WhisperFlags; $env:OLLAMA_MODEL = $OllamaModel; $env:RETENTION_DAYS = $Retention
+  Write-Host 'Encendiendo (Whisper tarda unos segundos en cargar el modelo)…'
+  $p = Start-Process -FilePath $AppBin -WorkingDirectory $StateDir -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput (Join-Path $StateDir 'app.log') -RedirectStandardError (Join-Path $StateDir 'app.err.log')
+  Set-Content $AppPid $p.Id
+  if (-not (WaitFor "$Base/api/health" 150 $p)) {
+    Write-Host "La app no arrancó; últimas líneas de $StateDir\app.log:" -ForegroundColor Red
+    Get-Content (Join-Path $StateDir 'app.log'), (Join-Path $StateDir 'app.err.log') -Tail 12 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+    exit 1
+  }
+}
+
+# Apaga la app y, con ella, Whisper y Ollama si los arrancó ella (son sus procesos hijos).
+function Stop-App {
+  if (AppAlive) { Quiet "taskkill /PID $([int](Get-Content $AppPid -TotalCount 1)) /T /F" | Out-Null; Write-Host 'App, Whisper y Ollama detenidos' }
+  Remove-Item $AppPid -Force -ErrorAction SilentlyContinue
+  foreach ($n in 'whisper', 'ollama') { Stop-Pid $n | Out-Null } # por si quedó alguno de una salida brusca
 }
 
 # --- Medición (doctor y bench): CPU (100% = un núcleo), memoria y GPU de whisper-server + ollama ---
@@ -557,7 +648,7 @@ function Cmd-VigilarAgente {
   }
   function StartStack {
     Log 'llegó un audio: enciendo todo'
-    if (-not (Quiet 'docker info')) {
+    if ($Runtime -eq 'docker' -and -not (Quiet 'docker info')) {
       New-Item -ItemType File -Force $DockerByAgent | Out-Null
       $dd = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
       if (Test-Path $dd) { Start-Process $dd }
@@ -645,7 +736,8 @@ function Cmd-Help {
   Write-Host 'Uso: .\transcriptor.cmd <comando> [VARIABLE=valor ...]'
   Write-Host ''
   Write-Host '  setup    Instala y descarga todo lo necesario (una sola vez)'
-  Write-Host '  up       Levanta todo (Whisper + Ollama nativos y la app en Docker)'
+  Write-Host '  up       Levanta todo: la app, Whisper y Ollama (con RUNTIME=docker, la app en Docker)'
+  Write-Host '  build    Compila la app (up lo hace solo si cambió algo)'
   Write-Host '  down     Baja todo y libera la memoria'
   Write-Host '  entrada  Abre la carpeta de entrada (los audios que sueltes ahí se procesan solos)'
   Write-Host '  agente   Vigilante en segundo plano: enciende todo cuando llega un audio y lo apaga solo (agente-off lo quita)'
@@ -661,11 +753,15 @@ function Cmd-Help {
 }
 
 function Cmd-Setup {
-  DockerReady
+  if ($Runtime -eq 'docker') { DockerReady }
+  else {
+    Ensure-Tool 'go' 'GoLang.Go' 'Go'
+    Ensure-Tool 'npm.cmd' 'OpenJS.NodeJS.LTS' 'Node.js'
+    Ensure-Tool 'ffmpeg' 'Gyan.FFmpeg' 'ffmpeg'
+  }
   if (-not (OllamaExe)) {
     # winget vive en WindowsApps, que algunas terminales no tienen en el PATH.
-    $winget = (Get-Command 'winget' -ErrorAction SilentlyContinue).Source
-    if (-not $winget -and (Test-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe")) { $winget = "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe" }
+    $winget = WingetExe
     if (-not $winget) { Fail 'Instala Ollama desde https://ollama.com/download/windows y vuelve a ejecutar setup.' }
     Write-Host 'Instalando Ollama con winget…'
     & $winget install --id Ollama.Ollama -e --accept-source-agreements --accept-package-agreements; Check 'La instalación de Ollama'
@@ -693,22 +789,26 @@ function Cmd-Setup {
   Start-Ollama
   & (OllamaExe) pull $OllamaModel; Check "ollama pull $OllamaModel"
   Stop-Services
+  if ($Runtime -eq 'docker') { Compose build; Check 'docker compose build' } else { Build-App }
   Write-Host ''; Write-Host 'Listo. Arranca con: .\transcriptor.cmd up'
 }
 
 function Cmd-Up {
-  DockerReady
+  if ($Runtime -eq 'docker') { DockerReady }
   New-Item -ItemType Directory -Force $DataPath, $InboxPath | Out-Null
   # Otro programa en el puerto (p. ej. Apache de XAMPP): mejor avisar que dejar fallar a Docker.
   foreach ($c in (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
     $owner = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
-    if ($owner -and $owner.ProcessName -notmatch 'docker|wslrelay|vpnkit') {
+    if ($owner -and $owner.ProcessName -notmatch 'docker|wslrelay|vpnkit|^transcriptor$') {
       Fail "El puerto $Port ya lo usa otro programa ($($owner.ProcessName), PID $($owner.Id)). Usa otro: .\transcriptor.cmd up PORT=8090"
     }
   }
-  if (-not (Start-Whisper)) { exit 1 }
-  Start-Ollama
-  Compose up -d --build; Check 'docker compose up'
+  if ($Runtime -eq 'docker') {
+    if (-not (Start-Whisper)) { exit 1 }
+    Start-Ollama
+    if (-not (Quiet 'docker image inspect transcriptor:local')) { Compose build; Check 'docker compose build' }
+    Compose up -d; Check 'docker compose up'
+  } else { Start-App }
   Write-Host ''; Write-Host "Transcriptor listo en http://localhost:$Port   (tus sesiones: $DataPath)"
   Write-Host "Carpeta de entrada: $InboxPath   (todo audio que sueltes ahí se procesa solo; .\transcriptor.cmd entrada la abre)"
   Start-Agent-IfInstalled
@@ -721,6 +821,7 @@ function Cmd-Entrada {
 }
 
 function Cmd-Down {
+  Stop-App
   if ((Has 'docker') -and (Quiet 'docker info')) { Compose down }
   Stop-Services
 }
@@ -882,8 +983,11 @@ switch ($Command) {
   'vigilar-agente' { Cmd-VigilarAgente }
   'whatsapp-diagnostico' { Cmd-WhatsAppDiag }
   'whatsapp-spike' { Cmd-WhatsAppSpike }
-  'status' { Show-Status; if ((Has 'docker') -and (Quiet 'docker info')) { Compose ps --format 'app: {{.State}} ({{.Status}})' } }
-  'logs'   { Compose logs -f --tail=100 app }
+  'status' { Show-Status
+             if ($Runtime -eq 'docker') { if ((Has 'docker') -and (Quiet 'docker info')) { Compose ps --format 'app: {{.State}} ({{.Status}})' } }
+             elseif (Up "$Base/api/health") { Write-Host "app:            encendida (http://localhost:$Port)" } else { Write-Host 'app:            apagada' } }
+  'build'  { if ($Runtime -eq 'docker') { Compose build } else { Build-App } }
+  'logs'   { if ($Runtime -eq 'docker') { Compose logs -f --tail=100 app } else { Get-Content (Join-Path $StateDir 'app.log') -Tail 100 -Wait } }
   'doctor' { Cmd-Doctor }
   'bench'  { Cmd-Bench }
   'purge'  { Cmd-Purge }

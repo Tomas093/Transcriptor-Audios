@@ -27,6 +27,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	if cfg.ManageServices && !localAddr(cfg.Addr) { // en Docker, el puerto ya lo limita docker-compose.yml
+		slog.Warn("la app queda accesible desde la red: usa ADDR=127.0.0.1:<puerto>", "addr", cfg.Addr)
+	}
+	var services *Services
+	if cfg.ManageServices {
+		services = StartServices(ctx, cfg) // antes que el worker: un audio de la entrada no debe encontrar Whisper apagado
+	}
+
 	go worker.Run(ctx)
 	if cfg.InboxDir != "" {
 		go NewInbox(cfg.InboxDir, store, worker).Run(ctx)
@@ -47,7 +55,11 @@ func main() {
 	}()
 
 	slog.Info("escuchando", "addr", cfg.Addr, "data", cfg.DataDir, "retención_días", cfg.RetentionDays)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	err = srv.ListenAndServe()
+	if services != nil {
+		services.Stop()
+	}
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("servidor detenido", "err", err)
 		os.Exit(1)
 	}

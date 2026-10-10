@@ -25,6 +25,15 @@ type Config struct {
 	MaxUploadBytes  int64
 	AllowedHosts    []string
 	InboxDir        string // carpeta vigilada; vacío = desactivada
+
+	// Modo nativo: la app arranca y apaga Whisper y Ollama (ver services.go).
+	ManageServices bool
+	WhisperBin     string
+	WhisperModel   string
+	WhisperThreads int
+	WhisperFlags   string
+	OllamaBin      string
+	LogDir         string
 }
 
 func env(key, def string) string {
@@ -55,7 +64,8 @@ func envInt(key string, def int) int {
 
 func loadConfig() Config {
 	return Config{
-		Addr:        env("ADDR", ":4747"),
+		// Solo desde este equipo. En Docker se escucha en :8080 dentro del contenedor (ver Dockerfile).
+		Addr:        env("ADDR", "127.0.0.1:4747"),
 		DataDir:     env("DATA_DIR", "/data"),
 		WebDir:      env("WEB_DIR", "/app/web"),
 		TmpDir:      env("TMP_DIR", filepath.Join(os.TempDir(), "transcriptor")),
@@ -74,6 +84,13 @@ func loadConfig() Config {
 		MaxUploadBytes:  int64(envInt("MAX_UPLOAD_MB", 1024)) << 20,
 		AllowedHosts:    splitList(env("ALLOWED_HOSTS", "localhost,127.0.0.1,::1")),
 		InboxDir:        env("INBOX_DIR", ""),
+		ManageServices:  env("MANAGE_SERVICES", "") == "1",
+		WhisperBin:      env("WHISPER_BIN", "whisper-server"),
+		WhisperModel:    env("WHISPER_MODEL", ""),
+		WhisperThreads:  envInt("WHISPER_THREADS", 4),
+		WhisperFlags:    env("WHISPER_FLAGS", "-fa"),
+		OllamaBin:       env("OLLAMA_BIN", "ollama"),
+		LogDir:          env("LOG_DIR", filepath.Join(os.TempDir(), "transcriptor")),
 	}
 }
 

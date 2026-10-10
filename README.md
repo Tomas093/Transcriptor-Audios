@@ -13,10 +13,7 @@ Qué obtienes al soltar uno o varios audios:
 
 ## 1. Instalación (una sola vez)
 
-**Necesitas:** un Mac con chip Apple Silicon (M1 o posterior), unos 7 GB libres en disco y estas dos aplicaciones instaladas:
-
-- [Homebrew](https://brew.sh)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop), **abierto** (ícono de la ballena en la barra superior).
+**Necesitas:** un Mac con chip Apple Silicon (M1 o posterior), unos 7 GB libres en disco y [Homebrew](https://brew.sh). **No hace falta Docker.**
 
 Abre la **Terminal** y ejecuta:
 
@@ -27,11 +24,13 @@ git checkout claude/exciting-knuth-1qnu23    # la rama con la versión final
 make setup
 ```
 
-`make setup` instala Whisper y Ollama, y descarga los modelos (~5 GB). Tarda un rato la primera vez. Si Homebrew no instala `whisper-server`, el propio comando te dice cómo compilarlo.
+`make setup` instala con Homebrew lo que falte (Whisper, Ollama, ffmpeg, y Go y Node para compilar la app), descarga los modelos (~5 GB) y compila la app. Tarda un rato la primera vez. Si Homebrew no instala `whisper-server`, el propio comando te dice cómo compilarlo.
+
+> **¿Prefieres Docker?** Con `RUNTIME=docker` en el `.env` la app corre en [Docker Desktop](https://www.docker.com/products/docker-desktop), como en versiones anteriores (Whisper y Ollama siguen nativos). Es más pesado (Docker Desktop ocupa ~1 GB aunque no haga nada) y tarda más en encender.
 
 ### En Windows
 
-**Necesitas:** Windows 10/11 de 64 bits, [Docker Desktop](https://www.docker.com/products/docker-desktop) **abierto**, [Git](https://git-scm.com/download/win) (o descarga el ZIP del repositorio) y `winget` (viene con Windows 11). Con una GPU NVIDIA va mucho más rápido; sin ella funciona en CPU.
+**Necesitas:** Windows 10/11 de 64 bits, [Git](https://git-scm.com/download/win) (o descarga el ZIP del repositorio) y `winget` (viene con Windows 11). Con una GPU NVIDIA va mucho más rápido; sin ella funciona en CPU. No hace falta Docker (con `RUNTIME=docker` en el `.env` se usa [Docker Desktop](https://www.docker.com/products/docker-desktop), como antes).
 
 En PowerShell:
 
@@ -42,7 +41,7 @@ git checkout claude/exciting-knuth-1qnu23
 .\transcriptor.cmd setup
 ```
 
-Instala Ollama con winget y descarga whisper.cpp (la versión con CUDA si tienes NVIDIA, ~650 MB; si no, la de CPU) y los modelos. Todos los comandos de esta guía funcionan igual cambiando `make` por `.\transcriptor.cmd`, también con variables: `.\transcriptor.cmd up WHISPER_THREADS=2`. Por debajo ejecuta `scripts\transcriptor.ps1` con Windows PowerShell, sin tocar tu política de ejecución.
+Instala con winget Ollama, ffmpeg, Go y Node (estos dos, para compilar la app), descarga whisper.cpp (la versión con CUDA si tienes NVIDIA, ~650 MB; si no, la de CPU) y los modelos, y compila la app. Todos los comandos de esta guía funcionan igual cambiando `make` por `.\transcriptor.cmd`, también con variables: `.\transcriptor.cmd up WHISPER_THREADS=2`. Por debajo ejecuta `scripts\transcriptor.ps1` con Windows PowerShell, sin tocar tu política de ejecución.
 
 > Con una GPU de 4 GB o menos (p. ej. una RTX 3050 de portátil), Whisper `large-v3` y `qwen2.5:7b` no caben juntos en la VRAM. Va más fluido con el modelo turbo: `.\transcriptor.cmd setup WHISPER_MODEL_FILE=ggml-large-v3-turbo-q5_0.bin` y luego `up` con la misma variable.
 
@@ -57,6 +56,8 @@ make down    # lo apaga todo y libera la memoria
 
 En Windows: `.\transcriptor.cmd up` y `.\transcriptor.cmd down`.
 
+> `up` enciende un solo programa (`~/.transcriptor/bin/transcriptor`), que sirve la web y arranca Whisper y Ollama; `down` lo apaga con todo lo que arrancó (si Ollama ya estaba abierto por su cuenta, no lo toca). En un Mac M4 Max: encender 4-9 s (lo que tarda Whisper en cargar el modelo; unos segundos más si antes tiene que compilar, p. ej. tras un `git pull`) y apagar ~1 s.
+>
 > La primera vez que arranca, Metal (la GPU del Mac) tarda unos 15 s en preparar sus kernels. Es normal.
 >
 > La web queda en el puerto **4747** (poco usado, para no chocar con 8080 y similares). Si por algún motivo estuviera ocupado, `make up` te avisa y puedes elegir otro: `make up PORT=4748`.
@@ -71,21 +72,21 @@ make app
 
 Aparece **Transcriptor** en el Escritorio y en Launchpad. Desde ahí:
 
-- **Doble clic** (apagado): abre Docker Desktop si hace falta, enciende todo y abre la web.
+- **Doble clic** (apagado): enciende todo y abre la web (con `RUNTIME=docker`, antes abre Docker Desktop si hace falta).
 - **Doble clic** (encendido): pregunta **Abrir** o **Apagar** (apagar libera toda la memoria).
 
 No queda nada consumiendo mientras no lo uses: solo está encendido cuando tú lo enciendes. `make app-off` borra el ícono. Para usar otra imagen: `make app ICON=/ruta/a/mi-imagen.png` (PNG cuadrado, mejor de 1024×1024). Si el ícono no cambia al instante, reinicia el Dock: `killall Dock`. Registro: `~/.transcriptor/launcher.log`.
 
 ### Arranque automático (opcional, macOS)
 
-`make up` levanta todo junto: Whisper, Ollama y el contenedor. Si no quieres ni siquiera ejecutarlo, activa el arranque automático:
+`make up` levanta todo junto: la app, Whisper y Ollama. Si no quieres ni siquiera ejecutarlo, activa el arranque automático:
 
 ```bash
 make autostart       # desde ahora, todo se levanta solo al iniciar sesión en el Mac
 make autostart-off   # lo desactiva
 ```
 
-Al iniciar sesión abre Docker Desktop si hace falta, espera a que esté listo y ejecuta `make up` sin abrir el navegador; entra a `http://localhost:4747` cuando quieras. Registro: `~/.transcriptor/autostart.log`. Ten en cuenta que Whisper queda cargado en memoria (~1,5 GB) mientras el Mac esté encendido; Ollama descarga su modelo solo a los 60 s. Si cambias el puerto o el modelo, vuelve a ejecutar `make autostart PORT=…` para que lo recuerde.
+Al iniciar sesión, macOS enciende la app (sin abrir el navegador); entra a `http://localhost:4747` cuando quieras. Registro: `~/.transcriptor/app.log` (con `RUNTIME=docker`: abre Docker Desktop, espera y ejecuta `make up`; registro en `~/.transcriptor/autostart.log`). Ten en cuenta que Whisper queda cargado en memoria (~1,5 GB) mientras el Mac esté encendido; Ollama descarga su modelo solo a los 60 s. Si cambias el puerto o el modelo, vuelve a ejecutar `make autostart PORT=…` para que lo recuerde.
 
 **Paso a paso:**
 
@@ -130,7 +131,7 @@ make agente        # una sola vez
 y en **Configuración → Segundo plano** activa *Escuchar en segundo plano*. Entonces:
 
 - Un vigilante muy liviano arranca al iniciar sesión y mira la carpeta cada 30 s (prioridad mínima, sin GPU). **Con todo apagado, eso es lo único que consume**: medido, unos 4,5 MB de memoria y 0,3 s de CPU cada 3 minutos (0,2 % de un núcleo). En el Monitor de Actividad son `transcriptor-agent` y `bash` (`whatsapp.sh agent`).
-- Cuando llega un audio nuevo: copia el audio, enciende Docker, Whisper y Ollama, se procesa y aparece la sesión. Tarda entre 30 s y 1-2 min en estar listo (arrancar Docker y cargar el modelo).
+- Cuando llega un audio nuevo: copia el audio, enciende la app, Whisper y Ollama (y Docker Desktop, con `RUNTIME=docker`), se procesa y aparece la sesión. Sin Docker tarda unos segundos; con Docker, de 30 s a 1-2 min.
 - Tras **N minutos sin actividad** (10 por defecto, configurable) apaga todo y libera la memoria. Opcional: cerrar también Docker Desktop (solo si lo abrió él y no hay otros contenedores en marcha).
 - Si enciendes tú (`make up` o el ícono), el agente no lo apaga: solo apaga lo que él encendió.
 - El agente necesita *Acceso total al disco*, pero solo para un lanzador mínimo (`~/.transcriptor/bin/transcriptor-agent`, ~30 líneas en `scripts/agent-launcher.c`) que `make agente` compila y firma en tu Mac (requiere `clang`: `xcode-select --install`). Así el permiso no se le da a todo `/bin/bash`. `make agente` te dice qué binario agregar; después `launchctl kickstart -k gui/$(id -u)/com.transcriptor.agent`. Si no quieres darlo, no instales el agente: `make up`, el ícono y la carpeta `entrada` funcionan sin él.
@@ -204,10 +205,10 @@ resumen-general.txt    el resumen de toda la sesión
 | "falta el modelo qwen2.5:7b" | `ollama pull qwen2.5:7b` |
 | Un audio quedó en error | Botón **Reintentar** en ese audio. Si solo falló el resumen, el texto no se pierde |
 | Un audio no muestra resumen | Si tiene menos de ~20 palabras se omite a propósito (se lee de un vistazo) |
-| La app no abre | Comprueba que Docker Desktop esté abierto y ejecuta `make status` |
+| La app no abre | `make status` y mira `~/.transcriptor/app.log` (con `RUNTIME=docker`, comprueba que Docker Desktop esté abierto) |
 | No sabes qué pasa | `make doctor` hace un diagnóstico completo y una prueba real; pega su salida si necesitas ayuda |
 | Windows: "El puerto … ya lo usa otro programa" (p. ej. Apache de XAMPP) | Usa otro: `.\transcriptor.cmd up PORT=4748` (y el mismo `PORT=` en `doctor`/`bench`) |
-| Windows: "Docker Desktop no está en marcha" | Ábrelo y espera a *Engine running* |
+| Windows: "Docker Desktop no está en marcha" (solo con `RUNTIME=docker`) | Ábrelo y espera a *Engine running* |
 | Windows: whisper-server con CUDA no arranca (driver de NVIDIA antiguo) | `setup` pasa solo a la versión para CPU; o actualiza el driver, o fuérzala con `.\transcriptor.cmd setup WHISPER_GPU=cpu` |
 | Windows: `doctor` no comprueba el texto | Falta una voz de Windows en español: Configuración → Hora e idioma → Voz → Agregar voces |
 
@@ -221,6 +222,7 @@ En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart`, `s
 |---|---|
 | `make setup` | Instala y descarga todo lo necesario (una vez) |
 | `make up` / `make down` | Levanta / apaga todo |
+| `make build` | Compila la app (`up` lo hace solo si cambió algo, p. ej. tras un `git pull`) |
 | `make entrada` | Abre la carpeta de entrada |
 | `make agente` / `make agente-off` | Instala / quita el vigilante en segundo plano que enciende todo cuando llega un audio (se configura en la web o en el `.env`) |
 | `.\transcriptor.cmd whatsapp-spike` | Solo Windows: prueba guiada que dice si (y dónde) WhatsApp guarda los audios, y los extrae si están en su caché |
@@ -275,7 +277,8 @@ Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`). P
 | `BACKGROUND_ENABLED` | `0` | `1` = el agente enciende todo cuando llega un audio |
 | `BACKGROUND_IDLE_MIN` | `10` | Minutos sin actividad hasta que el agente apaga todo |
 | `WHATSAPP_MEDIA` | la de WhatsApp | Carpeta de audios de WhatsApp (en Windows, la que encuentre `whatsapp-spike`) |
-| `TZ` | la del sistema | Zona horaria del contenedor (en Windows se convierte sola; si sale mal: `TZ=America/Argentina/Buenos_Aires`) |
+| `RUNTIME` | `native` | `native`: la app corre directa en el equipo. `docker`: en Docker Desktop |
+| `TZ` | la del sistema | Zona horaria del contenedor, con `RUNTIME=docker` (en Windows se convierte sola; si sale mal: `TZ=America/Argentina/Buenos_Aires`) |
 
 Avanzado (variables de la app): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabulario inicial para el spanglish), `OLLAMA_KEEP_ALIVE` (`60s`), `OLLAMA_NUM_CTX` (`12288`), `MAX_UPLOAD_MB` (`1024`), `ALLOWED_HOSTS` (`localhost,127.0.0.1,::1`; protege contra ataques de *DNS rebinding*).
 
@@ -286,14 +289,14 @@ Avanzado (variables de la app): `WHISPER_LANG` (`es`), `WHISPER_PROMPT` (vocabul
 ## Cómo funciona
 
 ```
-Navegador ──► Docker: app (API en Go + web en React) ──► Whisper (whisper.cpp)   ← nativo (Metal / CUDA)
-                              │                      └──► Ollama + qwen2.5:7b     ← nativo (Metal / CUDA)
-                              └──► ~/TranscriptorAudios  (audios, textos, resúmenes)
+Navegador ──► transcriptor (API en Go + web en React) ──► Whisper (whisper.cpp)   ← Metal / CUDA
+                    │  arranca y apaga ──────────────────┘└──► Ollama + qwen2.5:7b ← Metal / CUDA
+                    └──► ~/TranscriptorAudios  (audios, textos, resúmenes)
 ```
 
-- **Whisper y Ollama van fuera de Docker** porque Docker en macOS corre en una máquina virtual Linux que **no puede usar la GPU de Apple**. Nativos usan Metal: son mucho más rápidos y calientan menos. En Windows, nativos usan la GPU NVIDIA (CUDA) sin configurar nada en Docker ni en WSL; sin NVIDIA, la CPU.
-- **Go en el backend:** el trabajo pesado lo hacen `whisper.cpp` y Ollama (C/C++); la app solo coordina, y Go da un binario estático que en reposo usa unos pocos MB.
-- El contenedor corre con el sistema de ficheros en **solo lectura**, sin privilegios, con límite de 512 MB y 1 CPU, y **solo es accesible desde tu equipo** (`127.0.0.1`).
+- **Todo nativo, sin Docker:** un solo programa (`transcriptor`, binario de Go) sirve la web y es dueño de Whisper y Ollama: los arranca al encender (o reutiliza los que ya estuvieran abiertos) y los apaga al salir. Solo escucha en `127.0.0.1`: nadie de tu red puede entrar.
+- **Por qué no Docker por defecto:** Docker en macOS corre en una máquina virtual Linux que **no puede usar la GPU de Apple**, así que Whisper y Ollama ya iban fuera; dentro quedaba solo la app, que ocupa ~15 MB. Docker Desktop, en cambio, ocupa ~1 GB aunque no haga nada (medido: 940 MB) y tarda en arrancar. Con `RUNTIME=docker` sigue disponible: el contenedor corre con el sistema de ficheros en **solo lectura**, sin privilegios, con límite de 512 MB y 1 CPU.
+- **Go en el backend:** el trabajo pesado lo hacen `whisper.cpp` y Ollama (C/C++); la app solo coordina, y Go da un binario que en reposo usa unos pocos MB.
 
 ```
 backend/   API en Go (solo biblioteca estándar): sesiones, cola, clientes de Whisper/Ollama, SSE, borrado automático
@@ -301,14 +304,17 @@ web/       React + Vite + TypeScript (CSS propio; diseño estilo Windows 95, en 
 scripts/   whatsapp.sh + agent.sh (copia de audios de WhatsApp y agente en segundo plano), launcher.sh + make-app.sh (ícono de doble clic), services.sh (Whisper y Ollama nativos), doctor.sh, stress.sh, bench.sh
            agent-launcher.c: lanzador mínimo del agente en Mac (el único programa con Acceso total al disco)
            transcriptor.ps1: lo mismo en Windows (setup, up/down, doctor, bench, agente, whatsapp-spike…); se usa con transcriptor.cmd
-Dockerfile, docker-compose.yml, Makefile
+scripts/app.sh: la app nativa en macOS (compila, y la enciende/apaga con launchd: com.transcriptor.app)
+Dockerfile, docker-compose.yml: solo con RUNTIME=docker
+Makefile
 PRODUCT.md contexto de producto y diseño
 ```
 
 ## Estado de verificación
 
-- **Probado en un Mac real** (Apple M4 Max, 36 GB): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
-- **Probado en Windows** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Docker Desktop 28): `setup`, `up` y `doctor` completos con **RESULTADO: OK**, con Whisper en GPU (CUDA) y Ollama reales: transcripción exacta, resúmenes por audio y general, 3 subidas simultáneas (42 s) y detección de repetidos; 2 audios cortos en 76 s en frío (incluye cargar `qwen2.5:7b`), GPU al 99 % y 3,8 GB de VRAM. Se midió con el modelo turbo, antes de que `large-v3` pasara a ser el modelo por defecto.
+- **Modo nativo en Mac** (M4 Max): `up` en 4-9 s (3 ciclos medidos; casi todo es Whisper cargando el modelo); un audio de WhatsApp transcrito y resumido en 4,9 s; `down` en 1 s sin dejar procesos. App ~15 MB de memoria.
+- **Probado en un Mac real** (Apple M4 Max, 36 GB, con Docker): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
+- **Probado en Windows con Docker** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Docker Desktop 28; el modo nativo de Windows está **sin probar** en un Windows real, solo compilado para Windows y revisado): `setup`, `up` y `doctor` completos con **RESULTADO: OK**, con Whisper en GPU (CUDA) y Ollama reales: transcripción exacta, resúmenes por audio y general, 3 subidas simultáneas (42 s) y detección de repetidos; 2 audios cortos en 76 s en frío (incluye cargar `qwen2.5:7b`), GPU al 99 % y 3,8 GB de VRAM. Se midió con el modelo turbo, antes de que `large-v3` pasara a ser el modelo por defecto.
 - **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (escritorio, móvil, errores) con auditoría de accesibilidad sin violaciones.
 - **WhatsApp en macOS** (macOS 27, WhatsApp de escritorio): copia de audios propios, de otros y **reenviados**, detección de chat y agente con su propio permiso. Ciclo completo en segundo plano con todo apagado: un audio reenviado desde el móvil se copió a los 12 s, encendió todo, quedó transcrito y resumido en menos de 1 min, y todo se apagó solo al minuto sin actividad. Vigilante en reposo: ~4,5 MB y 0,3 s de CPU cada 3 min. El agente de **Windows** está sin probar en Windows (ver arriba).
 - **Sin medir objetivamente:** la temperatura sostenida con audios muy largos. Para eso está `make stress`.

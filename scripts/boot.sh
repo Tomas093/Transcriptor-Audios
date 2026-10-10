@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Arranque desatendido (lo lanza el arranque automático al iniciar sesión):
-# espera a que Docker Desktop esté listo (lo abre si hace falta) y levanta todo.
+# Arranque desatendido (el agente, el ícono): con RUNTIME=docker espera a que Docker Desktop esté
+# listo (lo abre si hace falta); después levanta todo.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,6 +9,8 @@ LOG_DIR="${TRANSCRIPTOR_HOME:-$HOME/.transcriptor}"
 mkdir -p "$LOG_DIR"
 
 echo "[$(date '+%F %T')] arranque automático"
+RUNTIME="${RUNTIME:-$(sed -n 's/^RUNTIME=//p' "$ROOT/.env" 2>/dev/null | tail -1)}"
+if [[ "${RUNTIME:-native}" != docker ]]; then cd "$ROOT" && exec make up NO_OPEN=1; fi   # sin Docker: nada que esperar
 if ! docker info >/dev/null 2>&1; then
   echo "Docker no está listo: abriendo Docker Desktop…"
   open -a Docker 2>/dev/null || true
