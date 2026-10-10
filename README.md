@@ -171,7 +171,7 @@ La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una
 
 ### Cambiar el estilo de la app
 
-**Configuración → Estilo de la app** (abajo a la izquierda en la barra lateral). Hay 10, todos con la misma estructura: Windows 95 (el de siempre), Neo-brutalismo pop y oscuro, Bauhaus (color y negro), Swiss, Memphis, Periódico y dos Brutalismos. Se aplica al instante y se recuerda en ese navegador. Para probar uno sin guardarlo: `http://localhost:4747/?style=memphis`.
+**Configuración → Estilo de la app** (abajo a la izquierda en la barra lateral). Hay 15, todos con la misma estructura: Windows 95 (el de siempre), Neo-brutalismo crema y azul, **Albiceleste** (camiseta y bandera), **El 10 (Qatar)** (negro y dorado), **Taxi porteño**, **Cuaderno** (hoja rayada con post-its), **Ticket** (de caja), Bauhaus (color y negro), Swiss, Memphis, Periódico y dos Brutalismos. Se aplica al instante y se recuerda en ese navegador. Para probar uno sin guardarlo: `http://localhost:4747/?style=albiceleste`.
 
 ### Sesiones
 

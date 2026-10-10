@@ -3,8 +3,13 @@
 
 export const SKINS = [
   { id: "win95", name: "Windows 95", note: "Escritorio turquesa, ventanas con bisel", sw: ["#008080", "#c0c0c0", "#000080"] },
-  { id: "neo-pop", name: "Neo-brutalismo pop", note: "Colores planos, sombras duras", sw: ["#b8f2e6", "#ff6fb5", "#ffd84d"] },
-  { id: "neo-oscuro", name: "Neo-brutalismo oscuro", note: "Negro con sombras lima", sw: ["#14141b", "#c6ff3d", "#ff5fa2"] },
+  { id: "neo-crema", name: "Neo-brutalismo crema", note: "Papel crema, amarillo, lila y sombras duras", sw: ["#fff3dc", "#ffd60a", "#b8a4ff", "#111111"] },
+  { id: "neo-azul", name: "Neo-brutalismo azul", note: "Azul eléctrico, naranja y lima, sombras duras", sw: ["#2a47ff", "#ff7a1a", "#c9f31d", "#111111"] },
+  { id: "albiceleste", name: "Albiceleste", note: "Camiseta y bandera: celeste, blanco y Sol de Mayo", sw: ["#7fb0e0", "#ffffff", "#f6b40e", "#16304f"] },
+  { id: "el10", name: "El 10 (Qatar)", note: "Noche de gala: negro, dorado, celeste y dorsal enorme", sw: ["#0d0d10", "#d9b45a", "#7fb0e0"] },
+  { id: "taxi", name: "Taxi porteño", note: "Negro y amarillo, cinta a cuadros, taxímetro", sw: ["#ffd60a", "#141414", "#ffb000"] },
+  { id: "cuaderno", name: "Cuaderno", note: "Hoja rayada, margen rojo, resaltador y post-it", sw: ["#fbf8ee", "#e8403a", "#ffe94d", "#2c3a8c"] },
+  { id: "ticket", name: "Ticket", note: "Ticket de caja térmico, monoespaciada", sw: ["#d5d4cf", "#fbfbf8", "#23252b"] },
   { id: "bauhaus-color", name: "Bauhaus", note: "Círculo, cuadrado, triángulo", sw: ["#f2efe6", "#d62718", "#1d3fa8", "#f6c500"] },
   { id: "bauhaus-negro", name: "Bauhaus negro", note: "Geometría sobre negro", sw: ["#0e0e0e", "#d62718", "#f6c500", "#ffffff"] },
   { id: "swiss", name: "Swiss", note: "Tipografía grande, rejilla, un rojo", sw: ["#ffffff", "#111111", "#d62718"] },
