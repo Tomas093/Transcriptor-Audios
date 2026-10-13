@@ -11,7 +11,21 @@ Qué obtienes al soltar uno o varios audios:
 
 ---
 
-## 1. Instalación (una sola vez)
+## Instalación rápida (doble clic)
+
+1. Baja el proyecto: en GitHub, botón verde **Code → Download ZIP**, y descomprímelo (o `git clone https://github.com/Tomas093/Transcriptor-Audios.git`).
+2. Abre la carpeta y haz **doble clic** en el instalador de tu sistema:
+   - **Windows:** `Instalar en Windows.cmd`. Si Windows avisa de que el archivo viene de internet, pulsa *Más información → Ejecutar de todas formas*.
+   - **Mac:** `Instalar en Mac.command`. Antes necesitas [Homebrew](https://brew.sh); si no lo tienes, el instalador te abre su página. Si macOS no deja abrirlo, clic derecho → *Abrir*.
+3. Espera: la primera vez descarga ~6 GB (modelos de voz y de resumen) y tarda un rato. Al terminar se abre la app en el navegador.
+
+Desde entonces, abre la app con el ícono **Transcriptor** (Escritorio, y menú Inicio o Launchpad). En Windows, *Apagar Transcriptor* (menú Inicio) lo apaga todo; en Mac, doble clic en el ícono con la app encendida → *Apagar*. Volver a ejecutar el instalador (por ejemplo, tras bajar una versión nueva) es seguro: lo que ya está instalado no se repite.
+
+En Windows, el instalador elige el modelo de Whisper según tu GPU: `large-v3` (el más preciso) con una NVIDIA de 8 GB o más, y el turbo (más rápido, casi igual de preciso) con menos memoria de vídeo o sin NVIDIA. Queda anotado en el fichero `.env`.
+
+Lo que sigue explica lo mismo paso a paso con la Terminal, y todo lo demás.
+
+## 1. Instalación paso a paso (una sola vez)
 
 **Necesitas:** un Mac con chip Apple Silicon (M1 o posterior), unos 7 GB libres en disco y [Homebrew](https://brew.sh). **No hace falta Docker.**
 
@@ -20,7 +34,6 @@ Abre la **Terminal** y ejecuta:
 ```bash
 git clone https://github.com/Tomas093/Transcriptor-Audios.git
 cd Transcriptor-Audios
-git checkout claude/exciting-knuth-1qnu23    # la rama con la versión final
 make setup
 ```
 
@@ -37,7 +50,6 @@ En PowerShell:
 ```powershell
 git clone https://github.com/Tomas093/Transcriptor-Audios.git
 cd Transcriptor-Audios
-git checkout claude/exciting-knuth-1qnu23
 .\transcriptor.cmd setup
 ```
 
@@ -233,6 +245,8 @@ En Windows, cambia `make` por `.\transcriptor.cmd` (salvo `app`, `autostart`, `s
 | `.\transcriptor.cmd whatsapp-diagnostico` | Solo Windows: muestra dónde guarda WhatsApp los audios (ejecútalo justo después de recibir uno) |
 | `make whatsapp-estado` | Muestra qué audios de WhatsApp vigila y si tiene permiso |
 | `make app` / `make app-off` | Crea / borra el ícono «Transcriptor» (doble clic para encender o apagar, sin Terminal) |
+| Windows: `icono` / `icono-off` | Crea / borra el ícono «Transcriptor» (Escritorio y menú Inicio) y «Apagar Transcriptor» |
+| Windows: `instalar` | Todo de una vez (lo que hace `Instalar en Windows.cmd`): modelo según la GPU, `setup`, `icono` y `up` |
 | `make autostart` / `make autostart-off` | Activa / desactiva el arranque automático al iniciar sesión |
 | `make status` | Estado de Whisper, Ollama y la app |
 | `make logs` | Registros de la app (Ctrl+C para salir) |

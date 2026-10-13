@@ -238,10 +238,14 @@ function WingetExe {
 }
 function Ensure-Tool([string]$cmd, [string]$id, [string]$what) {
   if (Has $cmd) { return }
+  Refresh-Path # quizá ya está instalado, pero esta terminal se abrió antes y no lo ve
+  if (Has $cmd) { return }
   $winget = WingetExe
   if (-not $winget) { Fail "Falta $what. Instálalo (winget install $id) y vuelve a ejecutar setup." }
   Write-Host "Instalando $what con winget…"
-  & $winget install --id $id -e --accept-source-agreements --accept-package-agreements; Check "La instalación de $what"
+  & $winget install --id $id -e --accept-source-agreements --accept-package-agreements
+  # -1978335189 (0x8A15002B): ya instalado y sin actualización; no es un error.
+  if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) { Fail "La instalación de $what falló (código $LASTEXITCODE)" }
   Refresh-Path
   if (-not (Has $cmd)) { Fail "$what se instaló pero no lo encuentro: cierra y abre la terminal y vuelve a ejecutar setup." }
 }
@@ -784,11 +788,90 @@ function Cmd-VigilarAgente {
   }
 }
 
+# --- Ícono en el Escritorio y el menú Inicio (lo que en Mac es `make app`) ---
+
+$Shortcuts = @(
+  @{ Dir = [Environment]::GetFolderPath('Desktop'); Name = 'Transcriptor' },
+  @{ Dir = [Environment]::GetFolderPath('Programs'); Name = 'Transcriptor' },
+  @{ Dir = [Environment]::GetFolderPath('Programs'); Name = 'Apagar Transcriptor' }
+)
+
+# assets/icon.png → .ico de 256 px (un ICO puede llevar el PNG tal cual dentro).
+function Make-Ico([string]$png, [string]$ico) {
+  Add-Type -AssemblyName System.Drawing
+  $src = [Drawing.Image]::FromFile($png)
+  $bmp = New-Object Drawing.Bitmap 256, 256
+  $g = [Drawing.Graphics]::FromImage($bmp)
+  $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.DrawImage($src, 0, 0, 256, 256)
+  $ms = New-Object IO.MemoryStream
+  $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
+  $g.Dispose(); $bmp.Dispose(); $src.Dispose()
+  $data = $ms.ToArray()
+  $w = New-Object IO.BinaryWriter([IO.File]::Create($ico))
+  $w.Write([uint16]0); $w.Write([uint16]1); $w.Write([uint16]1)                     # cabecera: 1 imagen
+  $w.Write([byte]0); $w.Write([byte]0); $w.Write([byte]0); $w.Write([byte]0)        # 256x256, sin paleta
+  $w.Write([uint16]1); $w.Write([uint16]32); $w.Write([uint32]$data.Length); $w.Write([uint32]22)
+  $w.Write($data); $w.Close()
+}
+
+function Cmd-Icono {
+  $ico = Join-Path $StateDir 'transcriptor.ico'
+  try { Make-Ico (Join-Path $Root 'assets\icon.png') $ico } catch { $ico = $null } # sin ícono propio, el de cmd
+  $cmd = Join-Path $Root 'transcriptor.cmd'
+  $sh = New-Object -ComObject WScript.Shell
+  foreach ($s in $Shortcuts) {
+    $lnk = $sh.CreateShortcut((Join-Path $s.Dir "$($s.Name).lnk"))
+    $lnk.TargetPath = (Join-Path $env:WINDIR 'System32\cmd.exe')
+    $lnk.WorkingDirectory = $Root
+    if ($s.Name -eq 'Transcriptor') {
+      # Enciende si hace falta y abre la web; si algo falla, la ventana queda abierta con el error.
+      $lnk.Arguments = "/c `"`"$cmd`" up || pause`""
+      $lnk.Description = 'Transcriptor: enciende y abre la app'
+    } else {
+      $lnk.Arguments = "/c `"`"$cmd`" down`""
+      $lnk.Description = 'Transcriptor: apaga todo y libera la memoria'
+      $lnk.WindowStyle = 7 # minimizada
+    }
+    if ($ico) { $lnk.IconLocation = "$ico,0" }
+    $lnk.Save()
+  }
+  Write-Host 'Ícono «Transcriptor» creado en el Escritorio y en el menú Inicio (doble clic: enciende y abre la app).'
+  Write-Host 'Para apagarlo todo: «Apagar Transcriptor» en el menú Inicio. Quitar los íconos: .\transcriptor.cmd icono-off'
+}
+
+function Cmd-IconoOff {
+  foreach ($s in $Shortcuts) { Remove-Item (Join-Path $s.Dir "$($s.Name).lnk") -Force -ErrorAction SilentlyContinue }
+  Write-Host 'Íconos quitados.'
+}
+
+# Todo de una vez para quien acaba de bajar el repositorio (lo usa «Instalar en Windows.cmd»).
+function Cmd-Instalar {
+  # Modelo de Whisper según la GPU, salvo que ya se haya elegido: large-v3 (~3 GB) solo cabe junto a
+  # qwen2.5:7b en una NVIDIA con 8 GB o más; con menos, o en CPU, el turbo va mucho más fluido.
+  if (-not $env:WHISPER_MODEL_FILE) {
+    $vram = 0
+    if (HasNvidia) { [int]::TryParse(((nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | Select-Object -First 1) -replace '\s', ''), [ref]$vram) | Out-Null }
+    $pick = if ($vram -ge 7500) { 'ggml-large-v3.bin' } else { 'ggml-large-v3-turbo-q5_0.bin' }
+    Write-Host "Modelo de Whisper: $pick ($(if ($vram) { "GPU NVIDIA con $vram MB" } else { 'sin GPU NVIDIA' })). Queda en el .env; cámbialo ahí si quieres."
+    Add-Content $EnvFile "WHISPER_MODEL_FILE=$pick" -Encoding ASCII
+    $env:WHISPER_MODEL_FILE = $pick
+    $script:ModelFile = $pick
+    $script:Model = Join-Path $StateDir "models\$pick"
+    $script:ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$pick"
+  }
+  Cmd-Setup
+  Cmd-Icono
+  Cmd-Up
+}
+
 # --- Comandos ---
 
 function Cmd-Help {
   Write-Host 'Uso: .\transcriptor.cmd <comando> [VARIABLE=valor ...]'
   Write-Host ''
+  Write-Host '  instalar Todo de una vez: elige el modelo según tu GPU, setup, ícono en el Escritorio y up'
+  Write-Host '  icono    Crea el ícono «Transcriptor» (Escritorio y menú Inicio) y «Apagar Transcriptor»; icono-off los quita'
   Write-Host '  setup    Instala y descarga todo lo necesario (una sola vez)'
   Write-Host '  up       Levanta todo: la app, Whisper y Ollama (con RUNTIME=docker, la app en Docker)'
   Write-Host '  build    Compila la app (up lo hace solo si cambió algo)'
@@ -1045,6 +1128,9 @@ switch ($Command) {
   'doctor' { Cmd-Doctor }
   'bench'  { Cmd-Bench }
   'purge'  { Cmd-Purge }
+  'instalar' { Cmd-Instalar }
+  'icono'  { Cmd-Icono }
+  'icono-off' { Cmd-IconoOff }
   'test'   { Cmd-Test }
   'dev'    { Cmd-Dev }
   default  { Cmd-Help }
