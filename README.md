@@ -151,35 +151,26 @@ y en **Configuración → Segundo plano** activa *Escuchar en segundo plano*. En
 
 #### Windows: agente y WhatsApp
 
-La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una ventana (WebView2) y **puede que no guarde los audios como archivos**. Por eso en Windows hay dos piezas:
+WhatsApp para Windows (2025 en adelante) es WhatsApp Web dentro de una ventana (WebView2). **Cada nota de voz que reproduces queda guardada entera en su caché**, byte a byte igual que el original; los audios que descargas quedan además en `LocalState\sessions\<cuenta>\transfers\<año-semana>\`. Un vigilante copia los de los dos sitios a la carpeta `entrada`, sin repetir ninguno, y se transcriben solos:
 
-1. **Averiguar si tu WhatsApp guarda los audios** (prueba guiada de 2 minutos; solo lee, no cambia nada):
+1. **En la web, Configuración → Audios de WhatsApp → *Todos los chats*.** Desde entonces, **mientras el Transcriptor está encendido, cada audio que escuches en WhatsApp del PC aparece transcrito**, sin descargarlo. El vigilante arranca con la app (ícono *Transcriptor* o `up`) y se apaga con ella (*Apagar Transcriptor* o `down`): con la app cerrada no queda nada corriendo.
 
-   ```powershell
-   .\transcriptor.cmd whatsapp-spike
-   ```
-
-   Te pide que te llegue un audio nuevo (por ejemplo, reenviándotelo desde el móvil) y que lo escuches en WhatsApp del PC. Después busca en las carpetas de WhatsApp, **también dentro del caché de la app nueva**, y termina con un **RESULTADO**:
-   - **SÍ** (archivos normales): pon su carpeta en el `.env` como `WHATSAPP_MEDIA=...` y `WHATSAPP_CHATS=all`; el agente los copiará solo.
-   - **SÍ, DENTRO DEL CACHÉ**: saca el audio a `%TEMP%\transcriptor-spike\audio-1.opus` para que compruebes que es el que escuchaste. Pásale la salida a quien mantiene el proyecto: copiarlos solos desde el caché aún no está hecho.
-   - **NO**: esta versión no lo deja en el disco; usa *Descargar / Guardar como* → carpeta `entrada` (punto 2).
-
-   En Windows no hay forma fiable de saber de qué chat es cada audio, así que se copian **todos**. (`.\transcriptor.cmd whatsapp-diagnostico` es la versión rápida: solo lista los archivos nuevos de los últimos 15 minutos.)
-
-2. **El agente en segundo plano** (no necesita permisos de administrador):
+2. **Opcional: que vigile siempre**, también con la app cerrada. Instala el agente (una sola vez; no necesita permisos de administrador):
 
    ```powershell
-   .\transcriptor.cmd agente        # una sola vez; .\transcriptor.cmd agente-off lo quita
+   .\transcriptor.cmd agente        # .\transcriptor.cmd agente-off lo quita
    ```
 
-   Crea un acceso directo en la carpeta Inicio de Windows, así que arranca solo al iniciar sesión, sin ventana y con prioridad baja. Activa *Escuchar en segundo plano* en la web (Configuración) o pon `BACKGROUND_ENABLED=1` en el `.env`. Entonces:
-   - **Cuando cae un audio en la carpeta `entrada`** (en WhatsApp: clic derecho sobre el audio → *Descargar* / *Guardar como…* → carpeta `%USERPROFILE%\TranscriptorAudios\entrada`), abre Docker Desktop si hace falta, enciende todo y el audio se procesa solo.
-   - Si encontró la carpeta de WhatsApp (punto 1), además copia ahí sus audios nuevos.
-   - Tras N minutos sin actividad apaga lo que encendió él.
-   - No usa CPU mientras espera (lo despierta Windows cuando aparece un archivo), pero PowerShell ocupa unas decenas de MB de memoria.
-   - Registro: `%USERPROFILE%\.transcriptor\agente.log`.
+   Crea un acceso directo en la carpeta Inicio de Windows: arranca solo al iniciar sesión, sin ventana y con prioridad baja, y `down` ya no lo para. Con *Escuchar en segundo plano* activado en Configuración, enciende la app cuando llega un audio y la apaga tras N minutos sin actividad.
 
-> **Probado en Windows 11 con Windows PowerShell 5.1:** el agente enciende todo cuando cae un audio en `entrada` (17 s hasta tener el texto, partiendo de todo apagado) y lo apaga solo tras el tiempo sin actividad; `whatsapp-diagnostico` corre con la app real de WhatsApp para Windows (2.2639). **Falta** `whatsapp-spike`, que necesita que alguien reciba y escuche un audio a mano, y la copia desde la carpeta de WhatsApp. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
+- **No se puede elegir chat:** ni el caché ni la carpeta de descargas dicen de qué chat es cada audio, así que se copia todo lo que escuches. Con *Solo estos chats* no copia nada y la web explica por qué.
+- **Solo lo que escuchas:** WhatsApp guarda un audio en el caché cuando lo reproduces, no antes. Al instalar el agente (o al cambiar la configuración) también copia lo que escuchaste en los últimos N minutos (*audios anteriores*; 0 = solo nuevos).
+- **Sin repetidos:** si escuchas el mismo audio otra vez, o lo escuchas y lo descargas, se copia una vez (recuerda el contenido en `%USERPROFILE%\.transcriptor\whatsapp-copiados.txt`).
+- También sigue funcionando a mano: clic derecho sobre el audio → *Descargar* / *Guardar como…* → carpeta `%USERPROFILE%\TranscriptorAudios\entrada`.
+- No usa CPU mientras espera (lo despierta Windows cuando cambia un archivo); PowerShell ocupa unas decenas de MB de memoria. Registro: `%USERPROFILE%\.transcriptor\agente.log`.
+- **Si algo no anda:** `.\transcriptor.cmd whatsapp-spike` es una prueba guiada de 2 minutos (te pide escuchar un audio nuevo y te dice dónde lo encontró, y lo extrae a `%TEMP%\transcriptor-spike`); `.\transcriptor.cmd whatsapp-diagnostico` lista lo que cambió en los últimos 15 minutos. Ninguno cambia nada de WhatsApp.
+
+> **Probado en Windows 11 con Windows PowerShell 5.1 y WhatsApp para Windows 2.2639:** al escuchar un audio reenviado a uno mismo, el vigilante lo copia desde el caché en ~4 s y la app lo transcribe sola (con el agente instalado y también solo con la app encendida, sin agente: `up` lo arranca y `down` lo para); el mismo audio otra vez no se repite; el agente sigue vivo aunque otro programa tenga su registro abierto. También: enciende todo cuando cae un audio en `entrada` (17 s hasta tener el texto, partiendo de todo apagado) y lo apaga solo tras el tiempo sin actividad. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
 
 ### Cambiar el estilo de la app
 
@@ -294,7 +285,8 @@ Variables que aceptan `make` y `transcriptor.cmd` (y el `docker-compose.yml`). P
 | `WHATSAPP_BACKLOG_MIN` | `60` | Al encender, incluir audios de WhatsApp de los últimos N minutos |
 | `BACKGROUND_ENABLED` | `0` | `1` = el agente enciende todo cuando llega un audio |
 | `BACKGROUND_IDLE_MIN` | `10` | Minutos sin actividad hasta que el agente apaga todo |
-| `WHATSAPP_MEDIA` | la de WhatsApp | Carpeta de audios de WhatsApp (en Windows, la que encuentre `whatsapp-spike`) |
+| `WHATSAPP_MEDIA` | la de WhatsApp | Carpeta de audios de WhatsApp (en Windows, la de descargas: `…\LocalState\sessions\<cuenta>\transfers`) |
+| `WHATSAPP_CACHE` | la de WhatsApp | Solo Windows: caché de WhatsApp de donde se sacan las notas de voz que escuchas |
 | `RUNTIME` | `native` | `native`: la app corre directa en el equipo. `docker`: en Docker Desktop |
 | `TZ` | la del sistema | Zona horaria del contenedor, con `RUNTIME=docker` (en Windows se convierte sola; si sale mal: `TZ=America/Argentina/Buenos_Aires`) |
 
