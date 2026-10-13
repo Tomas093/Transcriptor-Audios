@@ -229,6 +229,7 @@ function Show-Status {
 # winget instala con el PATH nuevo solo para terminales nuevas: lo releemos del registro.
 function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+  Use-PortableTools
 }
 function WingetExe {
   $w = (Get-Command 'winget' -ErrorAction SilentlyContinue).Source
@@ -237,12 +238,61 @@ function WingetExe {
 }
 function Ensure-Tool([string]$cmd, [string]$id, [string]$what) {
   if (Has $cmd) { return }
+  Refresh-Path # quizá ya está instalado, pero esta terminal se abrió antes y no lo ve
+  if (Has $cmd) { return }
   $winget = WingetExe
   if (-not $winget) { Fail "Falta $what. Instálalo (winget install $id) y vuelve a ejecutar setup." }
   Write-Host "Instalando $what con winget…"
-  & $winget install --id $id -e --accept-source-agreements --accept-package-agreements; Check "La instalación de $what"
+  & $winget install --id $id -e --accept-source-agreements --accept-package-agreements
+  # -1978335189 (0x8A15002B): ya instalado y sin actualización; no es un error.
+  if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) { Fail "La instalación de $what falló (código $LASTEXITCODE)" }
   Refresh-Path
   if (-not (Has $cmd)) { Fail "$what se instaló pero no lo encuentro: cierra y abre la terminal y vuelve a ejecutar setup." }
+}
+
+# Go y Node portables en $ToolsDir: sus instaladores MSI piden permisos de administrador (UAC) y, si
+# nadie acepta el aviso, fallan con 1602. Los zip oficiales no los necesitan.
+$ToolsDir = Join-Path $StateDir 'tools'
+function Use-PortableTools {
+  foreach ($d in (Join-Path $ToolsDir 'go\bin'), (Join-Path $ToolsDir 'node')) {
+    if ((Test-Path $d) -and ($env:Path -split ';') -notcontains $d) { $env:Path = "$d;$env:Path" }
+  }
+}
+Use-PortableTools
+function Install-Portable([string]$what, [string]$url, [string]$sha256, [string]$dest) {
+  $zip = Join-Path $ToolsDir "$what.zip"
+  New-Item -ItemType Directory -Force $ToolsDir | Out-Null
+  Write-Host "Descargando $what portable (sin permisos de administrador)…"
+  curl.exe -L --fail --progress-bar -o $zip $url; Check "La descarga de $what"
+  if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $sha256.ToUpper()) { Remove-Item $zip; Fail "La descarga de $what no coincide con su SHA-256 oficial; vuelve a intentarlo." }
+  $tmp = Join-Path $ToolsDir "$what.tmp"
+  if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+  New-Item -ItemType Directory -Force $tmp | Out-Null
+  tar.exe -xf $zip -C $tmp; Check "Descomprimir $what" # tar de Windows: mucho más rápido que Expand-Archive
+  if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+  Move-Item (Get-ChildItem $tmp -Directory | Select-Object -First 1).FullName $dest
+  Remove-Item -Recurse -Force $tmp, $zip
+  Use-PortableTools
+}
+function Ensure-Go {
+  if (Has 'go') { return }
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+  $rel = (Invoke-RestMethod -UseBasicParsing 'https://go.dev/dl/?mode=json') | Where-Object { $_.stable } | Select-Object -First 1
+  $f = $rel.files | Where-Object { $_.os -eq 'windows' -and $_.arch -eq $arch -and $_.kind -eq 'archive' } | Select-Object -First 1
+  if (-not $f) { Fail 'No encontré Go para Windows en go.dev; instálalo desde https://go.dev/dl/' }
+  Install-Portable 'go' "https://go.dev/dl/$($f.filename)" $f.sha256 (Join-Path $ToolsDir 'go')
+  if (-not (Has 'go')) { Fail 'No pude preparar Go.' }
+}
+function Ensure-Node {
+  if (Has 'npm.cmd') { return }
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+  $rel = (Invoke-RestMethod -UseBasicParsing 'https://nodejs.org/dist/index.json') | Where-Object { $_.lts } | Select-Object -First 1
+  $name = "node-$($rel.version)-win-$arch.zip"
+  $sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$($rel.version)/SHASUMS256.txt").Content -split "`n"
+  $sha = (($sums | Where-Object { $_ -match "\s$([regex]::Escape($name))$" }) -split '\s+')[0]
+  if (-not $sha) { Fail 'No encontré Node.js para Windows en nodejs.org; instálalo desde https://nodejs.org' }
+  Install-Portable 'node' "https://nodejs.org/dist/$($rel.version)/$name" $sha (Join-Path $ToolsDir 'node')
+  if (-not (Has 'npm.cmd')) { Fail 'No pude preparar Node.js.' }
 }
 
 function Newer([string[]]$paths, [string]$than) {
@@ -285,6 +335,10 @@ function Start-App {
   if (-not (Test-Path $Model)) { Fail "Falta el modelo $Model. Ejecuta: .\transcriptor.cmd setup" }
   $bin = WhisperBin; if (-not $bin) { Fail 'Falta whisper-server. Ejecuta: .\transcriptor.cmd setup' }
   $oll = OllamaExe; if (-not $oll) { Fail 'Falta Ollama. Ejecuta: .\transcriptor.cmd setup' }
+  # winget deja ffmpeg en el PATH del usuario (registro): una terminal abierta antes de setup no lo
+  # ve, y la app hereda el PATH de aquí.
+  if (-not (Has 'ffmpeg')) { Refresh-Path }
+  if (-not (Has 'ffmpeg')) { Fail 'Falta ffmpeg. Ejecuta: .\transcriptor.cmd setup' }
   if (Up "$Base/api/health") { Write-Host 'Ya estaba encendido'; return }
   # El hijo hereda estas variables: así sabe dónde está todo.
   $env:ADDR = "127.0.0.1:$Port"; $env:DATA_DIR = $DataPath; $env:INBOX_DIR = $InboxPath; $env:WEB_DIR = $AppWeb
@@ -596,7 +650,7 @@ function Cmd-VigilarAgente {
   if (AgentAlive) { Write-Host 'El agente ya está en marcha.'; return }
   Set-Content $AgentPid $PID
   try { (Get-Process -Id $PID).PriorityClass = 'BelowNormal' } catch {}
-  function Log([string]$m) { Add-Content $AgentLog "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" }
+  function Log([string]$m) { Add-Content $AgentLog "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" -Encoding UTF8 }
   $statusFile = Join-Path $DataPath 'whatsapp-status.json'
   $detectFile = Join-Path $DataPath 'whatsapp-detect'
   $confFile = Join-Path $DataPath 'whatsapp.conf'
@@ -655,14 +709,18 @@ function Cmd-VigilarAgente {
       for ($i = 0; $i -lt 120 -and -not (Quiet 'docker info'); $i++) { Start-Sleep 2 }
     }
     $env:NO_OPEN = '1'
-    $p = Start-Process powershell.exe -WindowStyle Hidden -Wait -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" up" `
+    # Sin -Wait: en PowerShell 5.1 espera también a los hijos, y `up` deja la app corriendo, así que el
+    # agente se quedaría colgado aquí para siempre. WaitForExit espera solo a `up`.
+    $p = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" up" `
       -RedirectStandardOutput (Join-Path $StateDir 'agente-up.log') -RedirectStandardError (Join-Path $StateDir 'agente-up.err.log')
+    $null = $p.Handle # sin esto, ExitCode queda vacío al terminar
+    $p.WaitForExit()
     if ($p.ExitCode -eq 0) { New-Item -ItemType File -Force $AgentStarted | Out-Null; $st.stack = 'on' }
     else { $st.error = "No pude encender la app. Detalles: $StateDir\agente-up.log"; Log 'falló el arranque' }
   }
   function StopStack {
     Log 'sin actividad: apago todo'
-    Start-Process powershell.exe -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" down" | Out-Null
+    (Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" down").WaitForExit()
     Remove-Item $AgentStarted -Force -ErrorAction SilentlyContinue
     if ($conf.QuitDocker -and (Test-Path $DockerByAgent) -and -not (docker ps -q 2>$null)) {
       Log 'cierro Docker Desktop'; Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue | Stop-Process
@@ -730,11 +788,90 @@ function Cmd-VigilarAgente {
   }
 }
 
+# --- Ícono en el Escritorio y el menú Inicio (lo que en Mac es `make app`) ---
+
+$Shortcuts = @(
+  @{ Dir = [Environment]::GetFolderPath('Desktop'); Name = 'Transcriptor' },
+  @{ Dir = [Environment]::GetFolderPath('Programs'); Name = 'Transcriptor' },
+  @{ Dir = [Environment]::GetFolderPath('Programs'); Name = 'Apagar Transcriptor' }
+)
+
+# assets/icon.png → .ico de 256 px (un ICO puede llevar el PNG tal cual dentro).
+function Make-Ico([string]$png, [string]$ico) {
+  Add-Type -AssemblyName System.Drawing
+  $src = [Drawing.Image]::FromFile($png)
+  $bmp = New-Object Drawing.Bitmap 256, 256
+  $g = [Drawing.Graphics]::FromImage($bmp)
+  $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.DrawImage($src, 0, 0, 256, 256)
+  $ms = New-Object IO.MemoryStream
+  $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
+  $g.Dispose(); $bmp.Dispose(); $src.Dispose()
+  $data = $ms.ToArray()
+  $w = New-Object IO.BinaryWriter([IO.File]::Create($ico))
+  $w.Write([uint16]0); $w.Write([uint16]1); $w.Write([uint16]1)                     # cabecera: 1 imagen
+  $w.Write([byte]0); $w.Write([byte]0); $w.Write([byte]0); $w.Write([byte]0)        # 256x256, sin paleta
+  $w.Write([uint16]1); $w.Write([uint16]32); $w.Write([uint32]$data.Length); $w.Write([uint32]22)
+  $w.Write($data); $w.Close()
+}
+
+function Cmd-Icono {
+  $ico = Join-Path $StateDir 'transcriptor.ico'
+  try { Make-Ico (Join-Path $Root 'assets\icon.png') $ico } catch { $ico = $null } # sin ícono propio, el de cmd
+  $cmd = Join-Path $Root 'transcriptor.cmd'
+  $sh = New-Object -ComObject WScript.Shell
+  foreach ($s in $Shortcuts) {
+    $lnk = $sh.CreateShortcut((Join-Path $s.Dir "$($s.Name).lnk"))
+    $lnk.TargetPath = (Join-Path $env:WINDIR 'System32\cmd.exe')
+    $lnk.WorkingDirectory = $Root
+    if ($s.Name -eq 'Transcriptor') {
+      # Enciende si hace falta y abre la web; si algo falla, la ventana queda abierta con el error.
+      $lnk.Arguments = "/c `"`"$cmd`" up || pause`""
+      $lnk.Description = 'Transcriptor: enciende y abre la app'
+    } else {
+      $lnk.Arguments = "/c `"`"$cmd`" down`""
+      $lnk.Description = 'Transcriptor: apaga todo y libera la memoria'
+      $lnk.WindowStyle = 7 # minimizada
+    }
+    if ($ico) { $lnk.IconLocation = "$ico,0" }
+    $lnk.Save()
+  }
+  Write-Host 'Ícono «Transcriptor» creado en el Escritorio y en el menú Inicio (doble clic: enciende y abre la app).'
+  Write-Host 'Para apagarlo todo: «Apagar Transcriptor» en el menú Inicio. Quitar los íconos: .\transcriptor.cmd icono-off'
+}
+
+function Cmd-IconoOff {
+  foreach ($s in $Shortcuts) { Remove-Item (Join-Path $s.Dir "$($s.Name).lnk") -Force -ErrorAction SilentlyContinue }
+  Write-Host 'Íconos quitados.'
+}
+
+# Todo de una vez para quien acaba de bajar el repositorio (lo usa «Instalar en Windows.cmd»).
+function Cmd-Instalar {
+  # Modelo de Whisper según la GPU, salvo que ya se haya elegido: large-v3 (~3 GB) solo cabe junto a
+  # qwen2.5:7b en una NVIDIA con 8 GB o más; con menos, o en CPU, el turbo va mucho más fluido.
+  if (-not $env:WHISPER_MODEL_FILE) {
+    $vram = 0
+    if (HasNvidia) { [int]::TryParse(((nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | Select-Object -First 1) -replace '\s', ''), [ref]$vram) | Out-Null }
+    $pick = if ($vram -ge 7500) { 'ggml-large-v3.bin' } else { 'ggml-large-v3-turbo-q5_0.bin' }
+    Write-Host "Modelo de Whisper: $pick ($(if ($vram) { "GPU NVIDIA con $vram MB" } else { 'sin GPU NVIDIA' })). Queda en el .env; cámbialo ahí si quieres."
+    Add-Content $EnvFile "WHISPER_MODEL_FILE=$pick" -Encoding ASCII
+    $env:WHISPER_MODEL_FILE = $pick
+    $script:ModelFile = $pick
+    $script:Model = Join-Path $StateDir "models\$pick"
+    $script:ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$pick"
+  }
+  Cmd-Setup
+  Cmd-Icono
+  Cmd-Up
+}
+
 # --- Comandos ---
 
 function Cmd-Help {
   Write-Host 'Uso: .\transcriptor.cmd <comando> [VARIABLE=valor ...]'
   Write-Host ''
+  Write-Host '  instalar Todo de una vez: elige el modelo según tu GPU, setup, ícono en el Escritorio y up'
+  Write-Host '  icono    Crea el ícono «Transcriptor» (Escritorio y menú Inicio) y «Apagar Transcriptor»; icono-off los quita'
   Write-Host '  setup    Instala y descarga todo lo necesario (una sola vez)'
   Write-Host '  up       Levanta todo: la app, Whisper y Ollama (con RUNTIME=docker, la app en Docker)'
   Write-Host '  build    Compila la app (up lo hace solo si cambió algo)'
@@ -755,8 +892,8 @@ function Cmd-Help {
 function Cmd-Setup {
   if ($Runtime -eq 'docker') { DockerReady }
   else {
-    Ensure-Tool 'go' 'GoLang.Go' 'Go'
-    Ensure-Tool 'npm.cmd' 'OpenJS.NodeJS.LTS' 'Node.js'
+    Ensure-Go
+    Ensure-Node
     Ensure-Tool 'ffmpeg' 'Gyan.FFmpeg' 'ffmpeg'
   }
   if (-not (OllamaExe)) {
@@ -991,6 +1128,9 @@ switch ($Command) {
   'doctor' { Cmd-Doctor }
   'bench'  { Cmd-Bench }
   'purge'  { Cmd-Purge }
+  'instalar' { Cmd-Instalar }
+  'icono'  { Cmd-Icono }
+  'icono-off' { Cmd-IconoOff }
   'test'   { Cmd-Test }
   'dev'    { Cmd-Dev }
   default  { Cmd-Help }
