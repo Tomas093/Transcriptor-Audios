@@ -20,6 +20,14 @@ import (
 type Settings struct {
 	WhatsApp   WhatsAppSettings   `json:"whatsapp"`
 	Background BackgroundSettings `json:"background"`
+	Inbox      InboxSettings      `json:"inbox"`
+}
+
+// InboxSettings: cómo se agrupan en sesiones los audios que llegan a la carpeta de entrada.
+type InboxSettings struct {
+	// Un audio se suma a la sesión de entrada anterior si llegó hace menos de GroupMin minutos
+	// del último audio de esa sesión; si no, empieza una sesión nueva (0 = una sesión por tanda).
+	GroupMin int `json:"groupMin"`
 }
 
 type WhatsAppSettings struct {
@@ -44,6 +52,7 @@ func defaultSettings() Settings {
 			IdleMin:    envInt("BACKGROUND_IDLE_MIN", 10),
 			QuitDocker: os.Getenv("BACKGROUND_QUIT_DOCKER") == "1",
 		},
+		Inbox: InboxSettings{GroupMin: envInt("INBOX_GROUP_MIN", 60)},
 	}
 	switch chats := strings.ReplaceAll(os.Getenv("WHATSAPP_CHATS"), " ", ""); chats {
 	case "":
@@ -57,6 +66,7 @@ func defaultSettings() Settings {
 		return Settings{
 			WhatsApp:   WhatsAppSettings{Mode: "off", Chats: []string{}, BacklogMin: 60},
 			Background: BackgroundSettings{IdleMin: 10},
+			Inbox:      InboxSettings{GroupMin: 60},
 		}
 	}
 	return s
@@ -94,6 +104,9 @@ func (s *Settings) validate() error {
 	}
 	if s.WhatsApp.BacklogMin < 0 || s.WhatsApp.BacklogMin > 24*60 {
 		return errors.New("los minutos hacia atrás deben estar entre 0 y 1440")
+	}
+	if s.Inbox.GroupMin < 0 || s.Inbox.GroupMin > 24*60 {
+		return errors.New("los minutos para agrupar audios deben estar entre 0 y 1440")
 	}
 	if s.Background.IdleMin < 1 || s.Background.IdleMin > 240 {
 		return errors.New("los minutos de inactividad deben estar entre 1 y 240")

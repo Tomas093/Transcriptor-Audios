@@ -71,7 +71,8 @@ type Session struct {
 	TitleAuto bool      `json:"titleAuto"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
-	Rev       int64     `json:"rev"` // sube en cada cambio; la web descarta estados más viejos que el que ya tiene
+	Rev       int64     `json:"rev"`              // sube en cada cambio; la web descarta estados más viejos que el que ya tiene
+	Source    string    `json:"source,omitempty"` // "entrada": la creó la carpeta de entrada (y puede seguir llenándola)
 	Items     []*Item   `json:"items"`
 	Global    Global    `json:"global"`
 }
@@ -199,9 +200,12 @@ func (s *Store) publish(sess *Session) {
 	}
 }
 
-func (s *Store) Create(title string) *Session {
+func (s *Store) Create(title string) *Session { return s.CreateFrom(title, "") }
+
+func (s *Store) CreateFrom(title, source string) *Session {
 	now := time.Now()
 	sess := &Session{
+		Source:    source,
 		ID:        now.Format("20060102-1504") + "-" + randHex(4),
 		Title:     title,
 		TitleAuto: true,
@@ -405,4 +409,31 @@ func (sess *Session) Markdown() string {
 		}
 	}
 	return b.String()
+}
+
+// LatestFrom devuelve la sesión más reciente creada por `source` cuyo último audio llegó hace menos
+// de `within` (o "" si no hay). Se calcula con los datos guardados, así que sigue valiendo aunque la
+// app se haya apagado y encendido entre un audio y otro.
+func (s *Store) LatestFrom(source string, within time.Duration, now time.Time) string {
+	if within <= 0 {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	best, bestAt := "", time.Time{}
+	for id, sess := range s.sessions {
+		if sess.Source != source {
+			continue
+		}
+		last := sess.CreatedAt
+		for _, it := range sess.Items {
+			if it.AddedAt.After(last) {
+				last = it.AddedAt
+			}
+		}
+		if now.Sub(last) <= within && last.After(bestAt) {
+			best, bestAt = id, last
+		}
+	}
+	return best
 }

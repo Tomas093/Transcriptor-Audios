@@ -19,7 +19,7 @@ func TestSettingsDefaultsAndRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Settings.WhatsApp.Mode != "off" || got.Settings.WhatsApp.BacklogMin != 60 || got.Settings.Background.IdleMin != 10 || got.Settings.Background.Enabled {
+	if got.Settings.WhatsApp.Mode != "off" || got.Settings.WhatsApp.BacklogMin != 60 || got.Settings.Background.IdleMin != 10 || got.Settings.Background.Enabled || got.Settings.Inbox.GroupMin != 60 {
 		t.Fatalf("defaults inesperados: %+v", got.Settings)
 	}
 	if got.WhatsApp.Running {
@@ -64,6 +64,7 @@ func TestSettingsRejectInvalid(t *testing.T) {
 		"sin chats":    `{"whatsapp":{"mode":"chats","chats":[],"backlogMin":0},"background":{"idleMin":10}}`,
 		"backlog":      `{"whatsapp":{"mode":"off","backlogMin":99999},"background":{"idleMin":10}}`,
 		"inactividad":  `{"whatsapp":{"mode":"off","backlogMin":0},"background":{"idleMin":0}}`,
+		"agrupar":      `{"whatsapp":{"mode":"off","backlogMin":0},"background":{"idleMin":10},"inbox":{"groupMin":99999}}`,
 		"no json":      `nope`,
 	}
 	for name, in := range bad {

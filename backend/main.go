@@ -36,8 +36,9 @@ func main() {
 	}
 
 	go worker.Run(ctx)
+	settings := NewSettingsStore(cfg.DataDir)
 	if cfg.InboxDir != "" {
-		go NewInbox(cfg.InboxDir, store, worker).Run(ctx)
+		go NewInbox(cfg.InboxDir, store, worker, settings).Run(ctx)
 	}
 	go runRetention(ctx, store, cfg.retention())
 	for session, ids := range store.Pending() {
@@ -45,7 +46,7 @@ func main() {
 		_ = worker.Enqueue(batch{session: session, items: ids})
 	}
 
-	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: whisper, ollama: ollama, settings: NewSettingsStore(cfg.DataDir)}
+	api := &API{cfg: cfg, store: store, worker: worker, hub: hub, whisper: whisper, ollama: ollama, settings: settings}
 	srv := &http.Server{Addr: cfg.Addr, Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()

@@ -16,8 +16,8 @@ import (
 
 const (
 	inboxPoll   = 3 * time.Second
-	inboxWindow = 10 * time.Minute // audios que llegan con menos de esto entre sí van a la misma sesión
 	inboxDone   = "procesados"
+	inboxSource = "entrada"
 )
 
 var inboxExts = map[string]bool{
@@ -35,18 +35,17 @@ type fileSig struct {
 // (que no funcionan bien a través de los volúmenes de Docker) y espera a que cada fichero
 // deje de crecer, para no tomar una descarga a medias.
 type Inbox struct {
-	dir     string
-	store   *Store
-	worker  *Worker
-	prev    map[string]fileSig // estado en el sondeo anterior
-	skip    map[string]fileSig // ya procesados que no se pudieron mover: no se repiten
-	current string             // sesión que se está llenando
-	lastAt  time.Time
-	now     func() time.Time
+	dir      string
+	store    *Store
+	worker   *Worker
+	prev     map[string]fileSig // estado en el sondeo anterior
+	skip     map[string]fileSig // ya procesados que no se pudieron mover: no se repiten
+	settings *SettingsStore     // de ahí sale la ventana de agrupación (nil = la de por defecto)
+	now      func() time.Time
 }
 
-func NewInbox(dir string, store *Store, worker *Worker) *Inbox {
-	return &Inbox{dir: dir, store: store, worker: worker, prev: map[string]fileSig{}, skip: map[string]fileSig{}, now: time.Now}
+func NewInbox(dir string, store *Store, worker *Worker, settings *SettingsStore) *Inbox {
+	return &Inbox{dir: dir, store: store, worker: worker, settings: settings, prev: map[string]fileSig{}, skip: map[string]fileSig{}, now: time.Now}
 }
 
 func (in *Inbox) Run(ctx context.Context) {
@@ -102,11 +101,21 @@ func (in *Inbox) scan() {
 	in.ingest(ready)
 }
 
+// window es cuánto puede pasar entre un audio y el siguiente para que sigan en la misma sesión.
+func (in *Inbox) window() time.Duration {
+	g := defaultSettings().Inbox.GroupMin
+	if in.settings != nil {
+		g = in.settings.Get().Inbox.GroupMin
+	}
+	return time.Duration(g) * time.Minute
+}
+
 func (in *Inbox) ingest(names []string) {
-	id := in.current
-	if id == "" || in.now().Sub(in.lastAt) > inboxWindow || !in.store.Read(id, func(*Session) {}) {
-		sess := in.store.Create("Entrada " + in.now().Format("02/01 15:04"))
-		id = sess.ID
+	// La sesión se busca en lo guardado, no en memoria: así los audios de una misma hora quedan juntos
+	// aunque la app se apague y se encienda entre uno y otro (el agente en segundo plano lo hace).
+	id := in.store.LatestFrom(inboxSource, in.window(), in.now())
+	if id == "" {
+		id = in.store.CreateFrom("Entrada "+in.now().Format("02/01 15:04"), inboxSource).ID
 	}
 	if err := os.MkdirAll(in.store.audioDir(id), 0o755); err != nil {
 		slog.Error("entrada: no se pudo crear la carpeta de audio", "err", err)
@@ -132,7 +141,6 @@ func (in *Inbox) ingest(names []string) {
 		for _, it := range items {
 			_ = os.Remove(in.store.AudioPath(id, it.File))
 		}
-		in.current = ""
 		return
 	}
 	for _, f := range res.drop {
@@ -141,7 +149,6 @@ func (in *Inbox) ingest(names []string) {
 	for _, name := range origins {
 		in.archive(name)
 	}
-	in.current, in.lastAt = id, in.now()
 	if len(res.process) > 0 {
 		if err := in.worker.Enqueue(batch{session: id, items: res.process}); err != nil {
 			slog.Error("entrada: no se pudo encolar", "err", err)
