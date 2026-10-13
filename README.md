@@ -41,7 +41,7 @@ git checkout claude/exciting-knuth-1qnu23
 .\transcriptor.cmd setup
 ```
 
-Instala con winget Ollama, ffmpeg, Go y Node (estos dos, para compilar la app), descarga whisper.cpp (la versión con CUDA si tienes NVIDIA, ~650 MB; si no, la de CPU) y los modelos, y compila la app. Todos los comandos de esta guía funcionan igual cambiando `make` por `.\transcriptor.cmd`, también con variables: `.\transcriptor.cmd up WHISPER_THREADS=2`. Por debajo ejecuta `scripts\transcriptor.ps1` con Windows PowerShell, sin tocar tu política de ejecución.
+Instala Ollama y ffmpeg con winget, prepara Go y Node para compilar la app (si no los tienes, baja sus versiones portables oficiales a `%USERPROFILE%\.transcriptor\tools`, verificadas con SHA-256: sus instaladores piden permisos de administrador), descarga whisper.cpp (la versión con CUDA si tienes NVIDIA, ~650 MB; si no, la de CPU) y los modelos, y compila la app. Todos los comandos de esta guía funcionan igual cambiando `make` por `.\transcriptor.cmd`, también con variables: `.\transcriptor.cmd up WHISPER_THREADS=2`. Por debajo ejecuta `scripts\transcriptor.ps1` con Windows PowerShell, sin tocar tu política de ejecución.
 
 > Con una GPU de 4 GB o menos (p. ej. una RTX 3050 de portátil), Whisper `large-v3` y `qwen2.5:7b` no caben juntos en la VRAM. Va más fluido con el modelo turbo: `.\transcriptor.cmd setup WHISPER_MODEL_FILE=ggml-large-v3-turbo-q5_0.bin` y luego `up` con la misma variable.
 
@@ -167,7 +167,7 @@ La versión de WhatsApp para Windows de 2025 en adelante es la web dentro de una
    - No usa CPU mientras espera (lo despierta Windows cuando aparece un archivo), pero PowerShell ocupa unas decenas de MB de memoria.
    - Registro: `%USERPROFILE%\.transcriptor\agente.log`.
 
-> **Sin probar en un Windows real todavía:** el agente, `whatsapp-spike` y `whatsapp-diagnostico` se probaron en macOS con PowerShell 7 (copia, filtro por tipo de archivo, detección, que un error no lo tire, y extracción de audios reales de WhatsApp metidos en archivos de caché simulados, byte a byte iguales), no con Windows PowerShell 5.1, ni con la app real de WhatsApp para Windows, ni con Docker Desktop de Windows. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
+> **Probado en Windows 11 con Windows PowerShell 5.1:** el agente enciende todo cuando cae un audio en `entrada` (17 s hasta tener el texto, partiendo de todo apagado) y lo apaga solo tras el tiempo sin actividad; `whatsapp-diagnostico` corre con la app real de WhatsApp para Windows (2.2639). **Falta** `whatsapp-spike`, que necesita que alguien reciba y escuche un audio a mano, y la copia desde la carpeta de WhatsApp. Si algo falla, pega `%USERPROFILE%\.transcriptor\agente.log`.
 
 ### Cambiar el estilo de la app
 
@@ -318,7 +318,9 @@ PRODUCT.md contexto de producto y diseño
 
 - **Modo nativo en Mac** (M4 Max): `up` en 4-9 s (3 ciclos medidos; casi todo es Whisper cargando el modelo); un audio de WhatsApp transcrito y resumido en 4,9 s; `down` en 1 s sin dejar procesos. App ~15 MB de memoria.
 - **Probado en un Mac real** (Apple M4 Max, 36 GB, con Docker): `make doctor` completo con Whisper en GPU (Metal) y Ollama reales; 3 subidas simultáneas con resumen por audio y resumen general (9 s para 3 audios largos); detección de audios repetidos; 2 audios cortos en ~4 s con un pico de ~6 GB de memoria; y uso real con 8 audios.
-- **Probado en Windows con Docker** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Docker Desktop 28; el modo nativo de Windows está **sin probar** en un Windows real, solo compilado para Windows y revisado): `setup`, `up` y `doctor` completos con **RESULTADO: OK**, con Whisper en GPU (CUDA) y Ollama reales: transcripción exacta, resúmenes por audio y general, 3 subidas simultáneas (42 s) y detección de repetidos; 2 audios cortos en 76 s en frío (incluye cargar `qwen2.5:7b`), GPU al 99 % y 3,8 GB de VRAM. Se midió con el modelo turbo, antes de que `large-v3` pasara a ser el modelo por defecto.
+- **Probado en Windows** (Windows 11, Ryzen 7 6800HS, 16 GB, RTX 3050 Laptop 4 GB, Windows PowerShell 5.1, modelo turbo), en los dos modos, con Whisper en GPU (CUDA) y Ollama reales:
+  - **Nativo** (por defecto): `setup` desde cero (Go portable, ffmpeg por winget), `up`, `doctor` con **RESULTADO: OK** (2 audios cortos en 27 s; 3 subidas simultáneas en 45 s; GPU al 85 %), `down`, `test` (tests de Go y compilación de la web), carpeta de entrada (2 audios agrupados en una sesión en 12 s), Configuración y estilos en el navegador, y el agente en segundo plano.
+  - **Docker** (`RUNTIME=docker`): `up`, `doctor` con **RESULTADO: OK**, `status` y `down`.
 - **Tests automáticos:** backend con detector de carreras (subidas simultáneas, reemplazo y duplicados, reintentos, apagado a mitad de un audio, borrado automático); interfaz verificada en navegador (escritorio, móvil, errores) con auditoría de accesibilidad sin violaciones.
 - **WhatsApp en macOS** (macOS 27, WhatsApp de escritorio): copia de audios propios, de otros y **reenviados**, detección de chat y agente con su propio permiso. Ciclo completo en segundo plano con todo apagado: un audio reenviado desde el móvil se copió a los 12 s, encendió todo, quedó transcrito y resumido en menos de 1 min, y todo se apagó solo al minuto sin actividad. Vigilante en reposo: ~4,5 MB y 0,3 s de CPU cada 3 min. El agente de **Windows** está sin probar en Windows (ver arriba).
 - **Sin medir objetivamente:** la temperatura sostenida con audios muy largos. Para eso está `make stress`.

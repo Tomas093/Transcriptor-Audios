@@ -229,6 +229,7 @@ function Show-Status {
 # winget instala con el PATH nuevo solo para terminales nuevas: lo releemos del registro.
 function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+  Use-PortableTools
 }
 function WingetExe {
   $w = (Get-Command 'winget' -ErrorAction SilentlyContinue).Source
@@ -243,6 +244,51 @@ function Ensure-Tool([string]$cmd, [string]$id, [string]$what) {
   & $winget install --id $id -e --accept-source-agreements --accept-package-agreements; Check "La instalación de $what"
   Refresh-Path
   if (-not (Has $cmd)) { Fail "$what se instaló pero no lo encuentro: cierra y abre la terminal y vuelve a ejecutar setup." }
+}
+
+# Go y Node portables en $ToolsDir: sus instaladores MSI piden permisos de administrador (UAC) y, si
+# nadie acepta el aviso, fallan con 1602. Los zip oficiales no los necesitan.
+$ToolsDir = Join-Path $StateDir 'tools'
+function Use-PortableTools {
+  foreach ($d in (Join-Path $ToolsDir 'go\bin'), (Join-Path $ToolsDir 'node')) {
+    if ((Test-Path $d) -and ($env:Path -split ';') -notcontains $d) { $env:Path = "$d;$env:Path" }
+  }
+}
+Use-PortableTools
+function Install-Portable([string]$what, [string]$url, [string]$sha256, [string]$dest) {
+  $zip = Join-Path $ToolsDir "$what.zip"
+  New-Item -ItemType Directory -Force $ToolsDir | Out-Null
+  Write-Host "Descargando $what portable (sin permisos de administrador)…"
+  curl.exe -L --fail --progress-bar -o $zip $url; Check "La descarga de $what"
+  if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $sha256.ToUpper()) { Remove-Item $zip; Fail "La descarga de $what no coincide con su SHA-256 oficial; vuelve a intentarlo." }
+  $tmp = Join-Path $ToolsDir "$what.tmp"
+  if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+  New-Item -ItemType Directory -Force $tmp | Out-Null
+  tar.exe -xf $zip -C $tmp; Check "Descomprimir $what" # tar de Windows: mucho más rápido que Expand-Archive
+  if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+  Move-Item (Get-ChildItem $tmp -Directory | Select-Object -First 1).FullName $dest
+  Remove-Item -Recurse -Force $tmp, $zip
+  Use-PortableTools
+}
+function Ensure-Go {
+  if (Has 'go') { return }
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+  $rel = (Invoke-RestMethod -UseBasicParsing 'https://go.dev/dl/?mode=json') | Where-Object { $_.stable } | Select-Object -First 1
+  $f = $rel.files | Where-Object { $_.os -eq 'windows' -and $_.arch -eq $arch -and $_.kind -eq 'archive' } | Select-Object -First 1
+  if (-not $f) { Fail 'No encontré Go para Windows en go.dev; instálalo desde https://go.dev/dl/' }
+  Install-Portable 'go' "https://go.dev/dl/$($f.filename)" $f.sha256 (Join-Path $ToolsDir 'go')
+  if (-not (Has 'go')) { Fail 'No pude preparar Go.' }
+}
+function Ensure-Node {
+  if (Has 'npm.cmd') { return }
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+  $rel = (Invoke-RestMethod -UseBasicParsing 'https://nodejs.org/dist/index.json') | Where-Object { $_.lts } | Select-Object -First 1
+  $name = "node-$($rel.version)-win-$arch.zip"
+  $sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$($rel.version)/SHASUMS256.txt").Content -split "`n"
+  $sha = (($sums | Where-Object { $_ -match "\s$([regex]::Escape($name))$" }) -split '\s+')[0]
+  if (-not $sha) { Fail 'No encontré Node.js para Windows en nodejs.org; instálalo desde https://nodejs.org' }
+  Install-Portable 'node' "https://nodejs.org/dist/$($rel.version)/$name" $sha (Join-Path $ToolsDir 'node')
+  if (-not (Has 'npm.cmd')) { Fail 'No pude preparar Node.js.' }
 }
 
 function Newer([string[]]$paths, [string]$than) {
@@ -285,6 +331,10 @@ function Start-App {
   if (-not (Test-Path $Model)) { Fail "Falta el modelo $Model. Ejecuta: .\transcriptor.cmd setup" }
   $bin = WhisperBin; if (-not $bin) { Fail 'Falta whisper-server. Ejecuta: .\transcriptor.cmd setup' }
   $oll = OllamaExe; if (-not $oll) { Fail 'Falta Ollama. Ejecuta: .\transcriptor.cmd setup' }
+  # winget deja ffmpeg en el PATH del usuario (registro): una terminal abierta antes de setup no lo
+  # ve, y la app hereda el PATH de aquí.
+  if (-not (Has 'ffmpeg')) { Refresh-Path }
+  if (-not (Has 'ffmpeg')) { Fail 'Falta ffmpeg. Ejecuta: .\transcriptor.cmd setup' }
   if (Up "$Base/api/health") { Write-Host 'Ya estaba encendido'; return }
   # El hijo hereda estas variables: así sabe dónde está todo.
   $env:ADDR = "127.0.0.1:$Port"; $env:DATA_DIR = $DataPath; $env:INBOX_DIR = $InboxPath; $env:WEB_DIR = $AppWeb
@@ -596,7 +646,7 @@ function Cmd-VigilarAgente {
   if (AgentAlive) { Write-Host 'El agente ya está en marcha.'; return }
   Set-Content $AgentPid $PID
   try { (Get-Process -Id $PID).PriorityClass = 'BelowNormal' } catch {}
-  function Log([string]$m) { Add-Content $AgentLog "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" }
+  function Log([string]$m) { Add-Content $AgentLog "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" -Encoding UTF8 }
   $statusFile = Join-Path $DataPath 'whatsapp-status.json'
   $detectFile = Join-Path $DataPath 'whatsapp-detect'
   $confFile = Join-Path $DataPath 'whatsapp.conf'
@@ -655,14 +705,18 @@ function Cmd-VigilarAgente {
       for ($i = 0; $i -lt 120 -and -not (Quiet 'docker info'); $i++) { Start-Sleep 2 }
     }
     $env:NO_OPEN = '1'
-    $p = Start-Process powershell.exe -WindowStyle Hidden -Wait -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" up" `
+    # Sin -Wait: en PowerShell 5.1 espera también a los hijos, y `up` deja la app corriendo, así que el
+    # agente se quedaría colgado aquí para siempre. WaitForExit espera solo a `up`.
+    $p = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" up" `
       -RedirectStandardOutput (Join-Path $StateDir 'agente-up.log') -RedirectStandardError (Join-Path $StateDir 'agente-up.err.log')
+    $null = $p.Handle # sin esto, ExitCode queda vacío al terminar
+    $p.WaitForExit()
     if ($p.ExitCode -eq 0) { New-Item -ItemType File -Force $AgentStarted | Out-Null; $st.stack = 'on' }
     else { $st.error = "No pude encender la app. Detalles: $StateDir\agente-up.log"; Log 'falló el arranque' }
   }
   function StopStack {
     Log 'sin actividad: apago todo'
-    Start-Process powershell.exe -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" down" | Out-Null
+    (Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" down").WaitForExit()
     Remove-Item $AgentStarted -Force -ErrorAction SilentlyContinue
     if ($conf.QuitDocker -and (Test-Path $DockerByAgent) -and -not (docker ps -q 2>$null)) {
       Log 'cierro Docker Desktop'; Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue | Stop-Process
@@ -755,8 +809,8 @@ function Cmd-Help {
 function Cmd-Setup {
   if ($Runtime -eq 'docker') { DockerReady }
   else {
-    Ensure-Tool 'go' 'GoLang.Go' 'Go'
-    Ensure-Tool 'npm.cmd' 'OpenJS.NodeJS.LTS' 'Node.js'
+    Ensure-Go
+    Ensure-Node
     Ensure-Tool 'ffmpeg' 'Gyan.FFmpeg' 'ffmpeg'
   }
   if (-not (OllamaExe)) {
