@@ -9,6 +9,16 @@ Qué obtienes al soltar uno o varios audios:
 - Un **resumen de cada audio**.
 - Un **resumen general** de todos los audios de la sesión, como si fueran una sola conversación.
 
+## Cómo se usa (resumen)
+
+1. **Instala una sola vez** con el instalador de doble clic (ver abajo).
+2. **Abre la app** con el ícono *Transcriptor* (o `make up` en la Terminal): se abre en `http://localhost:4747`.
+3. **Suelta uno o varios audios** (`.opus`, `.ogg`, `.m4a`, `.mp3`, `.wav`…) en la ventana, o déjalos en la carpeta de entrada.
+4. **Lee el resultado**: texto, resumen de cada audio y resumen general de la sesión. Todo queda guardado en tu equipo.
+5. **Apaga** cuando termines (`make down`, o *Apagar Transcriptor*) para liberar la memoria.
+
+Por dentro, Whisper transcribe el audio y Ollama (un modelo de lenguaje local) genera los resúmenes; no se usa ningún servicio en la nube.
+
 ---
 
 ## Instalación rápida (doble clic)
